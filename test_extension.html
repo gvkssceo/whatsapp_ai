@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Extension Test Page</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <h1>WhatsApp ML Helper Extension Test</h1>
+    
+    <div id="test-results">
+        <h2>Test Results:</h2>
+        <div id="status">Testing...</div>
+        <div id="messages"></div>
+    </div>
+
+    <script>
+        // Test the extension functionality
+        async function testExtension() {
+            const statusDiv = document.getElementById('status');
+            const messagesDiv = document.getElementById('messages');
+            
+            try {
+                // Test 1: Check if extension is loaded
+                statusDiv.innerHTML = 'Testing extension connection...';
+                
+                // Test 2: Test ML service connection
+                statusDiv.innerHTML = 'Testing ML service connection...';
+                
+                const testResponse = await fetch('http://127.0.0.1:8000/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        messages: [{
+                            id: 'test1',
+                            chat_id: 'test',
+                            sender: 'test',
+                            text: 'This is an urgent message about payment deadline',
+                            ts: Date.now()
+                        }, {
+                            id: 'test2',
+                            chat_id: 'test',
+                            sender: 'test',
+                            text: 'Good morning, how are you?',
+                            ts: Date.now()
+                        }],
+                        opts: { return_summary: true, top_k: 2 }
+                    })
+                });
+                
+                if (testResponse.ok) {
+                    const data = await testResponse.json();
+                    statusDiv.innerHTML = '✅ ML service is working!';
+                    messagesDiv.innerHTML = `
+                        <h3>Test Results:</h3>
+                        <p>Processed ${data.important.length} messages</p>
+                        <ul>
+                            ${data.important.map(msg => 
+                                `<li><strong>${msg.priority}</strong> (${msg.score}): ${msg.text}</li>`
+                            ).join('')}
+                        </ul>
+                    `;
+                } else {
+                    statusDiv.innerHTML = '❌ ML service test failed';
+                }
+                
+            } catch (error) {
+                statusDiv.innerHTML = `❌ Error: ${error.message}`;
+                console.error('Test error:', error);
+            }
+        }
+        
+        // Run test when page loads
+        window.addEventListener('load', testExtension);
+    </script>
+</body>
+</html>

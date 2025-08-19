@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>WhatsApp AI Helper</title>
+  <style>
+    body { 
+      font-family: 'Segoe UI', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', Tahoma, Geneva, Verdana, sans-serif; 
+      padding: 0; 
+      width: 420px; 
+      height: 600px;
+      margin: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      overflow: hidden;
+    }
+    
+    .container {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .header {
+      text-align: center;
+      padding: 16px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+    }
+    
+    .header h3 {
+      margin: 0 0 4px 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .header p {
+      margin: 0;
+      font-size: 11px;
+      opacity: 0.8;
+    }
+    
+    .nav-tabs {
+      display: flex;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 0 16px;
+    }
+    
+    .nav-tab {
+      flex: 1;
+      padding: 12px 8px;
+      text-align: center;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+    
+    .nav-tab:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .nav-tab.active {
+      border-bottom-color: #4CAF50;
+      background: rgba(255, 255, 255, 0.2);
+    }
+    
+    .tab-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+    
+    .tab-panel {
+      display: none;
+      height: 100%;
+    }
+    
+    .tab-panel.active {
+      display: block;
+    }
+    
+    /* Configuration Tab */
+    .config-section {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .config-section h4 {
+      margin: 0 0 12px 0;
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #333;
+      font-size: 12px;
+      box-sizing: border-box;
+      margin-bottom: 10px;
+    }
+    
+    input[type="text"]:focus, input[type="password"]:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    
+    button {
+      flex: 1;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      background: rgba(255, 255, 255, 0.9);
+      color: #333;
+    }
+    
+    button:hover {
+      background: rgba(255, 255, 255, 1);
+      transform: translateY(-1px);
+    }
+    
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    button.primary {
+      background: #4CAF50;
+      color: white;
+    }
+    
+    button.primary:hover {
+      background: #45a049;
+    }
+    
+    button.secondary {
+      background: #2196F3;
+      color: white;
+    }
+    
+    button.secondary:hover {
+      background: #1976D2;
+    }
+    
+    /* Important Messages Tab */
+    .messages-container {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .filters {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .filter-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    
+    .filter-row:last-child {
+      margin-bottom: 0;
+    }
+    
+    select {
+      flex: 1;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #333;
+      font-size: 11px;
+    }
+    
+    .search-box {
+      flex: 2;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #333;
+      font-size: 11px;
+    }
+    
+    .messages-list {
+      flex: 1;
+      overflow-y: auto;
+      space-y: 8px;
+    }
+    
+    .message-card {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 8px;
+      backdrop-filter: blur(10px);
+      border-left: 4px solid;
+      transition: all 0.2s ease;
+    }
+    
+    .message-card:hover {
+      background: rgba(255, 255, 255, 0.15);
+      transform: translateY(-1px);
+    }
+    
+    .message-card.priority-P3 {
+      border-left-color: #f44336;
+    }
+    
+    .message-card.priority-P2 {
+      border-left-color: #ff9800;
+    }
+    
+    .message-card.priority-P1 {
+      border-left-color: #4caf50;
+    }
+    
+    .message-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    
+    .priority-badge {
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    
+    .priority-badge.P3 {
+      background: #f44336;
+      color: white;
+    }
+    
+    .priority-badge.P2 {
+      background: #ff9800;
+      color: white;
+    }
+    
+    .priority-badge.P1 {
+      background: #4caf50;
+      color: white;
+    }
+    
+    .score {
+      font-size: 11px;
+      opacity: 0.7;
+    }
+    
+    .chat-info {
+      font-size: 11px;
+      font-weight: 500;
+      margin-bottom: 4px;
+      opacity: 0.8;
+    }
+    
+    .message-text {
+      font-size: 12px;
+      line-height: 1.4;
+      margin-bottom: 6px;
+    }
+    
+    .message-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      opacity: 0.6;
+    }
+    
+    /* Analysis Tab */
+    .analysis-section {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .analysis-section h4 {
+      margin: 0 0 12px 0;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    
+    /* Status and Loading */
+    .status {
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    
+    .status.success {
+      background: rgba(76, 175, 80, 0.2);
+      border: 1px solid rgba(76, 175, 80, 0.3);
+    }
+    
+    .status.error {
+      background: rgba(244, 67, 54, 0.2);
+      border: 1px solid rgba(244, 67, 54, 0.3);
+    }
+    
+    .status.info {
+      background: rgba(33, 150, 243, 0.2);
+      border: 1px solid rgba(33, 150, 243, 0.3);
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 20px;
+    }
+    
+    .spinner {
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top: 2px solid white;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 10px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .output {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      padding: 12px;
+      white-space: pre-wrap;
+      font-size: 11px;
+      line-height: 1.4;
+      max-height: 200px;
+      overflow-y: auto;
+      backdrop-filter: blur(10px);
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    .stats {
+      display: flex;
+      gap: 16px;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    
+    .stat-item {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      padding: 8px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .stat-number {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    
+    .stat-label {
+      font-size: 10px;
+      opacity: 0.7;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      opacity: 0.7;
+    }
+    
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    
+    /* Scrollbar Styling */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    
+    ::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 3px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h3>&#129302; WhatsApp ML Helper</h3>
+      <p>Intelligent message prioritization & analysis with ML</p>
+    </div>
+    
+    <div class="nav-tabs">
+      <div class="nav-tab active" data-tab="important">&#11088; Important</div>
+      <div class="nav-tab" data-tab="analysis">&#128202; Analysis</div>
+      <div class="nav-tab" data-tab="config">&#9881;&#65039; Config</div>
+    </div>
+    
+    <div class="tab-content">
+      <!-- Important Messages Tab -->
+      <div class="tab-panel active" id="important-tab">
+        <div class="messages-container">
+          <div class="stats" id="message-stats">
+            <div class="stat-item">
+              <div class="stat-number" id="total-messages">0</div>
+              <div class="stat-label">Total</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-number" id="p3-messages">0</div>
+              <div class="stat-label">High Priority</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-number" id="p2-messages">0</div>
+              <div class="stat-label">Medium</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-number" id="chats-monitored">0</div>
+              <div class="stat-label">Chats</div>
+            </div>
+          </div>
+          
+          <div class="filters">
+            <div class="filter-row">
+              <select id="priority-filter">
+                <option value="">All Priorities</option>
+                <option value="P3">High Priority (P3)</option>
+                <option value="P2">Medium Priority (P2)</option>
+                <option value="P1">Low Priority (P1)</option>
+              </select>
+              <select id="chat-filter">
+                <option value="">All Chats</option>
+              </select>
+            </div>
+            <div class="filter-row">
+              <input type="text" class="search-box" id="search-input" placeholder="Search messages...">
+              <button id="refresh-messages" class="secondary">&#128260; Refresh</button>
+            </div>
+          </div>
+          
+          <div class="messages-list" id="messages-list">
+            <div class="empty-state" id="empty-state">
+              <div class="empty-state-icon">&#128237;</div>
+              <div>No important messages found</div>
+              <div style="font-size: 10px; margin-top: 8px; opacity: 0.6;">
+                Navigate to WhatsApp Web and start chatting to see important messages here
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Analysis Tab -->
+      <div class="tab-panel" id="analysis-tab">
+        <div class="analysis-section">
+          <h4>&#128202; ML Analysis</h4>
+          <div class="button-group">
+            <button id="summarize" class="primary">Summarize Chat</button>
+            <button id="analyze">Analyze Sentiment</button>
+          </div>
+          <div class="button-group">
+            <button id="process-all" class="secondary">Process All Messages</button>
+            <button id="test-ml" class="secondary">Test ML Service</button>
+          </div>
+          <div class="button-group">
+            <button id="debug-extraction" class="secondary">Debug Extraction</button>
+            <button id="validate-selectors" class="secondary">Validate Selectors</button>
+          </div>
+        </div>
+        
+        <div id="analysis-output" class="output hidden"></div>
+        <div id="analysis-loading" class="loading hidden">
+          <div class="spinner"></div>
+          <div>Processing with ML service...</div>
+        </div>
+      </div>
+      
+      <!-- Configuration Tab -->
+      <div class="tab-panel" id="config-tab">
+        <div class="config-section">
+          <h4>&#129302; ML Service Configuration</h4>
+          <input type="text" id="mlServiceUrl" placeholder="ML Service URL (e.g., http://127.0.0.1:8000)" value="http://127.0.0.1:8000">
+          <div class="button-group">
+            <button id="saveMlConfig">Save</button>
+            <button id="testMlConfig">Test Connection</button>
+          </div>
+          <div style="font-size: 11px; margin-top: 8px; opacity: 0.7;">
+            Configure the local ML service for message prioritization
+          </div>
+        </div>
+        
+        <div class="config-section">
+          <h4>&#128269; Monitoring Status</h4>
+          <div class="button-group">
+            <button id="startMonitoring" class="primary">Start Monitoring</button>
+            <button id="stopMonitoring">Stop Monitoring</button>
+          </div>
+          <div style="font-size: 11px; margin-top: 8px; opacity: 0.7;">
+            Monitoring automatically starts when you visit WhatsApp Web
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div id="status" class="status hidden"></div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

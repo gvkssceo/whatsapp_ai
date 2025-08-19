@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "WhatsApp ML Helper",
+  "description": "Intelligent WhatsApp Web chat analysis with ML-powered message prioritization, summarization, and insights. Extract and analyze your conversations using local ML models.",
+  "version": "2.0.0",
+  "permissions": [
+    "scripting", 
+    "activeTab", 
+    "storage"
+  ],
+  "host_permissions": [
+    "https://web.whatsapp.com/*",
+    "http://127.0.0.1:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.png",
+      "32": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    },
+    "default_title": "WhatsApp ML Helper - Message Prioritization & Analysis"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "icons": {
+    "16": "icon.png",
+    "32": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["icon.png", "test_emoji.html", "test_enhanced_extraction.html"],
+      "matches": ["https://web.whatsapp.com/*"]
+    }
+  ]
+}
