@@ -1,4 +1,4 @@
-# WhatsApp ML Helper
+# Nax
 
 A Chrome extension that provides intelligent message prioritization and analysis for WhatsApp Web using local ML models.
 
@@ -178,3 +178,8 @@ For support or questions:
 ---
 
 **Note**: This extension is not affiliated with WhatsApp Inc. Use at your own discretion and in accordance with WhatsApp's terms of service.
+
+
+
+
+python start_service.py

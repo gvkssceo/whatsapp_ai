@@ -1,4 +1,4 @@
-# 🤖 WhatsApp AI Helper
+# 🤖 Nax
 
 A powerful Chrome extension that provides intelligent analysis and summarization of your WhatsApp Web conversations using OpenAI's GPT-4 technology.
 
@@ -180,6 +180,6 @@ If you need help or have questions:
 
 ---
 
-**Made with ❤️ for better WhatsApp conversations**
+**Made with ❤️ for better conversations**
 
-*This extension is not affiliated with WhatsApp Inc. or OpenAI.*
+*This extension is not affiliated with any external companies.*

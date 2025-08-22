@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "WhatsApp ML Helper",
+  "name": "Nax",
   "description": "Intelligent WhatsApp Web chat analysis with ML-powered message prioritization, summarization, and insights. Extract and analyze your conversations using local ML models.",
   "version": "2.0.0",
   "permissions": [
@@ -10,7 +10,8 @@
   ],
   "host_permissions": [
     "https://web.whatsapp.com/*",
-    "http://127.0.0.1:8000/*"
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -23,7 +24,7 @@
       "48": "icon.png",
       "128": "icon.png"
     },
-    "default_title": "WhatsApp ML Helper - Message Prioritization & Analysis"
+    "default_title": "Nax - Message Prioritization & Analysis"
   },
   "content_scripts": [
     {
@@ -40,8 +41,9 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["icon.png", "test_emoji.html", "test_enhanced_extraction.html"],
-      "matches": ["https://web.whatsapp.com/*"]
+      "resources": ["icon.png", "test_emoji.html", "test_enhanced_extraction.html", "nax.mp4", "test_chat_title.html"],
+      "matches": ["https://web.whatsapp.com/*"],
+      "use_dynamic_url": true
     }
   ]
 }

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Chat Title Extraction Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background: #0056b3;
+        }
+        .result {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        .error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+        .success {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Chat Title Extraction Test</h1>
+    
+    <div class="test-section">
+        <h3>Test Chat Title Extraction</h3>
+        <p>This page tests the chat title extraction functionality of the Nax extension.</p>
+        
+        <button class="button" onclick="testExtraction()">🔍 Test Extraction</button>
+        <button class="button" onclick="forceRefresh()">🔄 Force Refresh</button>
+        <button class="button" onclick="clearResults()">🗑️ Clear Results</button>
+    </div>
+    
+    <div class="test-section">
+        <h3>Results</h3>
+        <div id="results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Instructions</h3>
+        <ol>
+            <li>Make sure the Nax extension is installed and enabled</li>
+            <li>Navigate to WhatsApp Web in another tab</li>
+            <li>Open a chat conversation</li>
+            <li>Come back to this tab and click "Test Extraction"</li>
+            <li>Check the browser console for detailed logs</li>
+        </ol>
+    </div>
+
+    <script>
+        function addResult(message, type = 'info') {
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `result ${type}`;
+            resultDiv.innerHTML = `
+                <strong>${new Date().toLocaleTimeString()}:</strong> ${message}
+            `;
+            resultsDiv.appendChild(resultDiv);
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function testExtraction() {
+            try {
+                addResult('Testing chat title extraction...', 'info');
+                
+                // Check if we're on WhatsApp Web
+                const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+                if (!tabs || !tabs[0] || !tabs[0].url.includes('web.whatsapp.com')) {
+                    addResult('❌ Please navigate to WhatsApp Web first', 'error');
+                    return;
+                }
+                
+                // Test comprehensive extraction
+                const comprehensiveResponse = await chrome.tabs.sendMessage(tabs[0].id, { 
+                    action: "extractChatTitleComprehensive" 
+                });
+                
+                if (comprehensiveResponse && comprehensiveResponse.success) {
+                    const title = comprehensiveResponse.title;
+                    if (title) {
+                        addResult(`✅ Comprehensive extraction successful: ${title}`, 'success');
+                    } else {
+                        addResult('⚠️ No chat title found with comprehensive extraction', 'error');
+                    }
+                } else {
+                    addResult('❌ Comprehensive extraction failed', 'error');
+                }
+                
+                // Test regular chat info
+                const chatInfoResponse = await chrome.tabs.sendMessage(tabs[0].id, { 
+                    action: "getCurrentChatInfo" 
+                });
+                
+                if (chatInfoResponse && chatInfoResponse.success) {
+                    const chatInfo = chatInfoResponse.chatInfo;
+                    addResult(`📱 Current chat: ${chatInfo.title} (ID: ${chatInfo.id})`, 'success');
+                } else {
+                    addResult('❌ Failed to get current chat info', 'error');
+                }
+                
+            } catch (error) {
+                addResult(`❌ Error: ${error.message}`, 'error');
+                console.error('Test extraction error:', error);
+            }
+        }
+
+        async function forceRefresh() {
+            try {
+                addResult('Force refreshing chat title...', 'info');
+                
+                const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+                if (!tabs || !tabs[0] || !tabs[0].url.includes('web.whatsapp.com')) {
+                    addResult('❌ Please navigate to WhatsApp Web first', 'error');
+                    return;
+                }
+                
+                const refreshResponse = await chrome.tabs.sendMessage(tabs[0].id, { 
+                    action: "forceRefreshChatTitle" 
+                });
+                
+                if (refreshResponse && refreshResponse.success) {
+                    const newTitle = refreshResponse.title;
+                    if (newTitle) {
+                        addResult(`✅ Chat title refreshed: ${newTitle}`, 'success');
+                    } else {
+                        addResult('⚠️ Chat title refresh failed - no title found', 'error');
+                    }
+                } else {
+                    addResult('❌ Chat title refresh failed', 'error');
+                }
+                
+            } catch (error) {
+                addResult(`❌ Error: ${error.message}`, 'error');
+                console.error('Force refresh error:', error);
+            }
+        }
+
+        // Auto-test on page load
+        window.addEventListener('load', () => {
+            addResult('Page loaded. Ready for testing.', 'info');
+        });
+    </script>
+</body>
+</html>

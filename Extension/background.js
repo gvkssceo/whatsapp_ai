@@ -1,4 +1,4 @@
-// Background service worker for WhatsApp AI Helper
+// Background service worker for Nax
 class BackgroundService {
   constructor() {
     this.initializeMessageListener();
@@ -7,6 +7,9 @@ class BackgroundService {
     this.importantMessages = new Map();
     this.processingQueue = [];
     this.isProcessing = false;
+    
+    // Initialize content script injection
+    this.initializeContentScriptInjection();
   }
 
   initializeMessageListener() {
@@ -34,6 +37,29 @@ class BackgroundService {
         case "testMLService":
           this.testMLServiceConnection(sendResponse);
           break;
+        case 'chatChanged':
+          console.log('Chat changed detected:', request.data);
+          // Update all stored messages with new chat info
+          this.updateMessagesForNewChat(request.data.newChatInfo);
+          sendResponse({ success: true, message: 'Chat change handled' });
+          break;
+        case 'openPopup':
+          console.log('Open popup requested');
+          chrome.action.openPopup();
+          sendResponse({ success: true, message: 'Popup opened' });
+          break;
+        case 'ping':
+          // Respond to ping for extension context health check
+          sendResponse({ success: true, message: 'pong', timestamp: Date.now() });
+          break;
+
+        case 'clearCache':
+          console.log('Clearing cache...');
+          this.importantMessages.clear();
+          this.processingQueue = [];
+          chrome.storage.local.remove(['important_messages', 'last_updated']);
+          sendResponse({ success: true, message: 'Cache cleared' });
+          break;
         default:
           sendResponse({ success: false, error: 'Unknown action' });
       }
@@ -45,10 +71,10 @@ class BackgroundService {
   initializeInstallListener() {
     chrome.runtime.onInstalled.addListener((details) => {
       if (details.reason === 'install') {
-        console.log('WhatsApp AI Helper installed successfully');
+        console.log('Nax installed successfully');
         // Could open a welcome page here
       } else if (details.reason === 'update') {
-        console.log('WhatsApp AI Helper updated to version', chrome.runtime.getManifest().version);
+        console.log('Nax updated to version', chrome.runtime.getManifest().version);
       }
     });
   }
@@ -152,7 +178,7 @@ class BackgroundService {
       const mlPayload = {
         messages: messages.map(msg => ({
           id: msg.id || msg.messageId || this.generateId(),
-          chat_id: msg.chat_id || msg.chatId || 'unknown',
+          chat_id: msg.chat_id || msg.chatId || (msg.chatInfo && msg.chatInfo.id) || 'unknown',
           sender: msg.sender || 'unknown',
           text: msg.text,
           ts: this.parseTimestamp(msg.ts || msg.timestamp)
@@ -169,8 +195,12 @@ class BackgroundService {
       const mlResponse = await this.callMLService('/analyze', mlPayload);
       
       if (mlResponse.success) {
-        // Store important messages
-        this.storeImportantMessages(mlResponse.data.important, messages);
+        // Store important messages with proper chat context
+        const importantMessages = mlResponse.data.important.map(important => ({
+          ...important,
+          chat_id: important.chat_id || (messages.find(m => m.id === important.id)?.chatId) || 'unknown'
+        }));
+        this.storeImportantMessages(importantMessages, messages);
 
         console.log(`Successfully processed ${messages.length} messages, found ${mlResponse.data.important.length} important`);
 
@@ -278,11 +308,16 @@ class BackgroundService {
         }
 
         important.push({
-          id: msg.id,
-          chat_id: msg.chat_id,
+          id: msg.id || msg.messageId || this.generateId(),
+          chat_id: msg.chat_id || msg.chatId || 'unknown',
           priority: priority,
           score: Math.round(score * 100) / 100,
-          text: msg.text
+          text: msg.text,
+          originalMessage: msg,
+          storedAt: Date.now(),
+          chatTitle: msg.chatTitle || 'Current Chat',
+          chatId: msg.chatId || msg.chat_id || 'current',
+          isGroup: msg.isGroup || false
         });
       });
 
@@ -311,6 +346,9 @@ class BackgroundService {
       }
 
       console.log(`Fallback processing completed: ${important.length} important messages`);
+      
+      // Store important messages immediately
+      this.storeImportantMessages(important, messages);
       
       return {
         success: true,
@@ -378,7 +416,6 @@ class BackgroundService {
     return personalKeywords.some(keyword => text.includes(keyword));
   }
 
-  // Store important messages in memory and local storage
   async storeImportantMessages(importantList, originalMessages) {
     try {
       const timestamp = Date.now();
@@ -387,28 +424,40 @@ class BackgroundService {
       
       importantList.forEach(item => {
         const originalMsg = originalMessages.find(msg => 
-          msg.id === item.id || msg.messageId === item.id || msg.text === item.text
+          msg.id === item.id || 
+          msg.messageId === item.id || 
+          msg.text === item.text ||
+          (msg.chatId && msg.chatId === item.chat_id) ||
+          (msg.chat_id && msg.chat_id === item.chat_id)
         );
 
         if (originalMsg) {
-          this.importantMessages.set(item.id, {
+          const messageToStore = {
             ...item,
             originalMessage: originalMsg,
             storedAt: timestamp,
             chatTitle: originalMsg.chatTitle || originalMsg.chat_id || 'Current Chat',
             chatId: originalMsg.chatId || originalMsg.chat_id || 'current',
-            isGroup: originalMsg.isGroup || false
-          });
+            isGroup: originalMsg.isGroup || false,
+            messageId: originalMsg.messageId || originalMsg.id || item.id
+          };
+          
+          this.importantMessages.set(item.id, messageToStore);
+          console.log(`Stored important message: ${item.text.substring(0, 50)}...`);
         } else {
           // If no original message found, create a basic entry
-          this.importantMessages.set(item.id, {
+          const messageToStore = {
             ...item,
             originalMessage: { text: item.text },
             storedAt: timestamp,
-            chatTitle: 'Current Chat',
-            chatId: 'current',
-            isGroup: false
-          });
+            chatTitle: item.chatTitle || 'Current Chat',
+            chatId: item.chatId || item.chat_id || 'current',
+            isGroup: item.isGroup || false,
+            messageId: item.id
+          };
+          
+          this.importantMessages.set(item.id, messageToStore);
+          console.log(`Stored important message (no original): ${item.text.substring(0, 50)}...`);
         }
       });
 
@@ -420,9 +469,44 @@ class BackgroundService {
       });
 
       console.log(`Stored ${importantList.length} important messages in memory and storage`);
+      console.log(`Total important messages now: ${this.importantMessages.size}`);
 
     } catch (error) {
       console.error('Error storing important messages:', error);
+    }
+  }
+
+  // Update messages for a new chat
+  async updateMessagesForNewChat(newChatInfo) {
+    try {
+      console.log('Updating messages for new chat:', newChatInfo);
+      
+      // Clear old chat data
+      const oldMessages = Array.from(this.importantMessages.values());
+      this.importantMessages.clear();
+      
+      // Update messages with new chat info
+      const updatedMessages = oldMessages.map(msg => ({
+        ...msg,
+        chatId: newChatInfo.id,
+        chatTitle: newChatInfo.title,
+        isGroup: newChatInfo.isGroup || false,
+        lastUpdated: Date.now()
+      }));
+      
+      // Store updated messages
+      updatedMessages.forEach(msg => this.importantMessages.set(msg.id, msg));
+      
+      // Save to chrome storage
+      const storageData = Array.from(this.importantMessages.values());
+      await chrome.storage.local.set({ 
+        important_messages: storageData,
+        last_updated: Date.now() 
+      });
+      
+      console.log(`Updated ${updatedMessages.length} messages for new chat: ${newChatInfo.title}`);
+    } catch (error) {
+      console.error('Error updating messages for new chat:', error);
     }
   }
 
@@ -498,20 +582,40 @@ class BackgroundService {
     this.isProcessing = true;
 
     try {
+      console.log(`Processing queue with ${this.processingQueue.length} items`);
+      
       while (this.processingQueue.length > 0) {
-        const batch = this.processingQueue.splice(0, 10); // Process 10 at a time
+        const batch = this.processingQueue.splice(0, 5); // Process 5 at a time
         
         for (const item of batch) {
-          await this.processMessagesWithML(item.messages, () => {}); // Silent processing
+          try {
+            console.log(`Processing batch item with ${item.messages.length} messages`);
+            
+            // Process messages with ML service
+            const result = await this.processMessagesWithML(item.messages, () => {});
+            
+            if (result && result.success) {
+              console.log(`Successfully processed batch: ${result.totalProcessed} messages, ${result.important.length} important`);
+            } else {
+              console.error('Batch processing failed:', result?.error);
+            }
+          } catch (error) {
+            console.error('Error processing batch item:', error);
+          }
         }
 
         // Small delay between batches
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     } catch (error) {
       console.error('Error processing queue:', error);
     } finally {
       this.isProcessing = false;
+      
+      // If there are more items in queue, process them
+      if (this.processingQueue.length > 0) {
+        setTimeout(() => this.processQueue(), 1000);
+      }
     }
   }
 
@@ -568,6 +672,110 @@ class BackgroundService {
       return Date.now();
     }
   }
+
+  // Initialize content script injection for WhatsApp Web tabs
+  async initializeContentScriptInjection() {
+    try {
+      // Do not forcibly inject; rely on manifest content_scripts.
+      // Optionally ensure presence on already open tabs without duplicating.
+      await this.ensureContentScriptOnWhatsAppTabs();
+      // Monitor for tab updates and ensure presence only if missing
+      this.monitorWhatsAppTabs();
+      console.log('Content script presence monitor initialized');
+    } catch (error) {
+      console.error('Error initializing content script injection:', error);
+    }
+  }
+
+  // Inject content script on existing WhatsApp Web tabs
+  async ensureContentScriptOnWhatsAppTabs() {
+    const details = [];
+    try {
+      const tabs = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' });
+      console.log(`Found ${tabs.length} WhatsApp Web tabs`);
+      
+      for (const tab of tabs) {
+        console.log(`Processing tab ${tab.id}: ${tab.url}`);
+        
+        // Try pinging the content script; if it responds, it's alive
+        const isAlive = await new Promise(resolve => {
+          try {
+            chrome.tabs.sendMessage(tab.id, { action: 'ping' }, (response) => {
+              resolve(!!(response && response.success));
+            });
+          } catch {
+            resolve(false);
+          }
+          // Safety timeout
+          setTimeout(() => resolve(false), 500);
+        });
+
+        if (isAlive) {
+          console.log(`Tab ${tab.id}: Content script is alive`);
+          details.push({ tabId: tab.id, status: 'alive' });
+          continue;
+        }
+
+        console.log(`Tab ${tab.id}: Content script not responding, injecting...`);
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['content.js']
+          });
+          details.push({ tabId: tab.id, status: 'injected' });
+          console.log(`Content script injected into tab ${tab.id}`);
+          
+          // Wait a bit for the script to initialize
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Verify injection worked
+          const verifyResult = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => {
+              return {
+                hasNaxScript: typeof window.naxScriptLoaded !== 'undefined',
+                hasMessageExtractor: typeof window.WhatsAppMessageExtractor !== 'undefined',
+                hasMessageListener: typeof window.naxMessageListenerActive !== 'undefined' && window.naxMessageListenerActive === true
+              };
+            }
+          });
+          
+          if (verifyResult && verifyResult[0] && verifyResult[0].result) {
+            const status = verifyResult[0].result;
+            console.log(`Tab ${tab.id}: Injection verification:`, status);
+          }
+          
+        } catch (error) {
+          details.push({ tabId: tab.id, status: 'failed', error: error.message });
+          console.log(`Failed to inject content script into tab ${tab.id}:`, error.message);
+        }
+      }
+      return { message: 'Checked WhatsApp tabs for content script', details };
+    } catch (error) {
+      console.error('Error ensuring content script on tabs:', error);
+      throw error;
+    }
+  }
+
+  // Monitor for new WhatsApp Web tabs
+  monitorWhatsAppTabs() {
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+      if (changeInfo.status === 'complete' && tab.url && tab.url.includes('web.whatsapp.com')) {
+        // Ensure presence only if missing
+        setTimeout(() => this.ensureContentScriptOnWhatsAppTabs(), 1500);
+      }
+    });
+  }
+
+
+
+
+
+
+
+
+
+
 }
 
 // Initialize the background service
@@ -594,12 +802,12 @@ async function initializeConfiguration() {
 initializeConfiguration();
 
 // Handle extension startup
-console.log('WhatsApp AI Helper background service started');
-console.log('Available actions: processAI, getExtensionInfo, newMessagesDetected, processMessagesForPriority, getImportantMessages, updateMLServiceUrl, testMLService');
+    console.log('Nax background service started');
+console.log('Available actions: processAI, getExtensionInfo, newMessagesDetected, processMessagesForPriority, getImportantMessages, updateMLServiceUrl, testMLService, chatChanged');
 
 // Optional: Add periodic health check
 setInterval(() => {
-  console.log('WhatsApp AI Helper background service running...');
+  console.log('Nax background service running...');
   console.log(`Important messages stored: ${backgroundService.importantMessages.size}`);
   console.log(`Processing queue length: ${backgroundService.processingQueue.length}`);
 }, 300000); // Log every 5 minutes

@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>WhatsApp AI Helper</title>
+  <title>Nax</title>
   <style>
     body { 
       font-family: 'Segoe UI', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', Tahoma, Geneva, Verdana, sans-serif; 
@@ -275,6 +275,8 @@
     .score {
       font-size: 11px;
       opacity: 0.7;
+      color: white;
+      font-weight: 500;
     }
     
     .chat-info {
@@ -432,7 +434,7 @@
 <body>
   <div class="container">
     <div class="header">
-      <h3>&#129302; WhatsApp ML Helper</h3>
+              <h3>&#129302; Nax</h3>
       <p>Intelligent message prioritization & analysis with ML</p>
     </div>
     
@@ -479,7 +481,9 @@
             </div>
             <div class="filter-row">
               <input type="text" class="search-box" id="search-input" placeholder="Search messages...">
-              <button id="refresh-messages" class="secondary">&#128260; Refresh</button>
+              <button id="refresh-messages" class="primary">🔄 Refresh Messages</button>
+              
+              
             </div>
           </div>
           
@@ -507,10 +511,6 @@
             <button id="process-all" class="secondary">Process All Messages</button>
             <button id="test-ml" class="secondary">Test ML Service</button>
           </div>
-          <div class="button-group">
-            <button id="debug-extraction" class="secondary">Debug Extraction</button>
-            <button id="validate-selectors" class="secondary">Validate Selectors</button>
-          </div>
         </div>
         
         <div id="analysis-output" class="output hidden"></div>
@@ -534,16 +534,27 @@
           </div>
         </div>
         
-        <div class="config-section">
-          <h4>&#128269; Monitoring Status</h4>
-          <div class="button-group">
-            <button id="startMonitoring" class="primary">Start Monitoring</button>
-            <button id="stopMonitoring">Stop Monitoring</button>
-          </div>
-          <div style="font-size: 11px; margin-top: 8px; opacity: 0.7;">
-            Monitoring automatically starts when you visit WhatsApp Web
-          </div>
-        </div>
+                 <div class="config-section">
+           <h4>&#128269; Monitoring Status</h4>
+           <div class="button-group">
+             <button id="startMonitoring" class="primary">Start Monitoring</button>
+             <button id="stopMonitoring">Stop Monitoring</button>
+           </div>
+           <div class="button-group">
+             <button id="testConnection" class="secondary">Test Connection</button>
+             <button id="fetchAllChats" class="secondary">📱 Fetch All Chats</button>
+           </div>
+           <div class="button-group">
+             <button id="showAvailableChats" class="secondary">📋 Show Available Chats</button>
+             <button id="autoFetchAll" class="primary">🚀 Auto-Fetch All Chats</button>
+           </div>
+           <div class="button-group">
+             <button id="forceRefreshPage" class="secondary">🔄 Force Refresh Page</button>
+           </div>
+           <div style="font-size: 11px; margin-top: 8px; opacity: 0.7;">
+             Monitoring automatically starts when you visit WhatsApp Web
+           </div>
+         </div>
       </div>
     </div>
     

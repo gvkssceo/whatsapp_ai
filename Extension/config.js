@@ -1,4 +1,4 @@
-// Configuration file for WhatsApp AI Helper
+// Configuration file for Nax
 const CONFIG = {
   // OpenAI API Configuration
   OPENAI: {
@@ -13,7 +13,7 @@ const CONFIG = {
 
   // Extension Configuration
   EXTENSION: {
-    NAME: 'WhatsApp AI Helper',
+    NAME: 'Nax',
     VERSION: '1.1.0',
     STORAGE_KEYS: {
       OPENAI_API_KEY: 'openai_api_key',

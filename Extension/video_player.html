@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nax Video Player - Infinite Loop</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a1a;
+            color: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        h1 {
+            color: #00ff88;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .video-container {
+            max-width: 800px;
+            width: 100%;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 255, 136, 0.3);
+        }
+        
+        video {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        button {
+            background: #00ff88;
+            color: #1a1a1a;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+        
+        button:hover {
+            background: #00cc6a;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 255, 136, 0.4);
+        }
+        
+        .status {
+            margin-top: 15px;
+            padding: 10px 20px;
+            background: rgba(0, 255, 136, 0.1);
+            border-radius: 20px;
+            border: 1px solid #00ff88;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎬 Nax Video Player</h1>
+    <div class="video-container">
+        <video id="aiVideo" loop muted autoplay controls>
+            <source src="./nax.mp4" type="video/mp4">
+            <source src="nax.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+    </div>
+    
+    <div class="controls">
+        <button onclick="playVideo()">▶️ Play</button>
+        <button onclick="pauseVideo()">⏸️ Pause</button>
+        <button onclick="restartVideo()">🔄 Restart</button>
+        <button onclick="toggleMute()">🔇 Toggle Mute</button>
+    </div>
+    
+    <div class="status" id="status">
+        Video ready - Click Play to start infinite loop
+    </div>
+    
+    <div class="file-info" style="margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 10px; font-size: 12px;">
+        <strong>File:</strong> nax.mp4 (1.2MB)<br>
+        <strong>Path:</strong> Extension/nax.mp4<br>
+        <strong>Note:</strong> Make sure to open this HTML file from the Extension folder
+    </div>
+
+    <script>
+        const video = document.getElementById('aiVideo');
+        const status = document.getElementById('status');
+        
+        function playVideo() {
+            video.play();
+            status.textContent = '🎬 Playing in infinite loop...';
+        }
+        
+        function pauseVideo() {
+            video.pause();
+            status.textContent = '⏸️ Video paused';
+        }
+        
+        function restartVideo() {
+            video.currentTime = 0;
+            video.play();
+            status.textContent = '🔄 Restarted and playing in infinite loop...';
+        }
+        
+        function toggleMute() {
+            video.muted = !video.muted;
+            status.textContent = video.muted ? '🔇 Video muted' : '🔊 Video unmuted';
+        }
+        
+        // Auto-play when page loads (if browser allows)
+        video.addEventListener('canplay', function() {
+            status.textContent = 'Video loaded - Click Play to start infinite loop';
+        });
+        
+        // Error handling
+        video.addEventListener('error', function(e) {
+            console.error('Video error:', e);
+            status.textContent = '❌ Error loading video. Check console for details.';
+        });
+        
+        // Load start
+        video.addEventListener('loadstart', function() {
+            status.textContent = '🔄 Loading video...';
+        });
+        
+        // Update status on video events
+        video.addEventListener('play', function() {
+            status.textContent = '🎬 Playing in infinite loop...';
+        });
+        
+        video.addEventListener('pause', function() {
+            status.textContent = '⏸️ Video paused';
+        });
+        
+        video.addEventListener('ended', function() {
+            status.textContent = '🔄 Video ended, restarting automatically...';
+        });
+    </script>
+</body>
+</html>
