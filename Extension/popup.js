@@ -1494,7 +1494,7 @@ class AIProcessor {
           return false;
         });
 
-      console.log(`Filtered ${validMessages.length} valid messages from ${response.chats.length} total`);
+      console.log(`Filtered ${validMessages.length} valid messages from ${response.messages ? response.messages.length : 'unknown'} total`);
 
       return {
         success: true,
@@ -1627,10 +1627,7 @@ class WhatsAppAIHelper {
     }
   }
 
-  async saveConfig() {
-    // This method is now deprecated since we don't use OpenAI API
-    UIManager.showStatus('OpenAI API is no longer used. Please use ML service instead.', 'info');
-  }
+  // Removed deprecated OpenAI config method - now using ML service only
 
   async saveMlConfig() {
     const mlServiceUrl = document.getElementById('mlServiceUrl').value.trim();
@@ -1910,7 +1907,7 @@ class WhatsAppAIHelper {
         return;
       }
 
-      const availableChats = chatsResponse.availableChats;
+      const availableChats = chatsResponse.availableChats || chatsResponse.chats || [];
       console.log(`Found ${availableChats.length} available chats:`, availableChats);
       
       if (availableChats.length === 0) {

@@ -13,10 +13,15 @@ app = FastAPI(title="WA Priority Service")
 # Add CORS middleware to handle preflight requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "chrome-extension://*",           # Chrome extension access
+        "https://web.whatsapp.com",       # WhatsApp Web (if needed)
+        "http://127.0.0.1:*",            # Local development
+        "http://localhost:*"              # Local development alternative
+    ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],  # Only necessary methods
+    allow_headers=["Content-Type", "Authorization"],  # Only necessary headers
 )
 
 # Initialize model and classes

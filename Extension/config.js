@@ -14,7 +14,7 @@ const CONFIG = {
   // Extension Configuration
   EXTENSION: {
     NAME: 'Nax',
-    VERSION: '1.1.0',
+    VERSION: '2.0.0',
     STORAGE_KEYS: {
       OPENAI_API_KEY: 'openai_api_key',
       USER_PREFERENCES: 'user_preferences'

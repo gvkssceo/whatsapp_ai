@@ -5,3 +5,32 @@ text,label
 "Payment of ₹5000 pending",P3
 "Please update the doc",P2
 "Thanks! Received",P1
+"URGENT: Server is down, need immediate attention",P3
+"Deadline is tomorrow, please confirm status",P3
+"Payment failed, please retry ASAP",P3
+"Interview scheduled for 2pm today",P3
+"Error in production, customers affected",P3
+"Client meeting moved to next week",P2
+"Can you review the proposal by Friday?",P2
+"Please send the updated presentation",P2
+"Need your feedback on the design",P2
+"Project status update required",P2
+"How was your weekend?",P1
+"Thanks for the help!",P1
+"See you tomorrow",P1
+"Good night everyone",P1
+"Happy birthday!",P1
+"Congratulations on the promotion",P1
+"The weather is nice today",P1
+"Did you watch the game?",P1
+"Coffee break in 10 minutes",P1
+"Emergency maintenance tonight at 11pm",P3
+"System backup failed, check logs",P3
+"Customer complaint needs immediate response",P3
+"Budget approval needed by EOD",P3
+"Security breach detected, all hands on deck",P3
+"Please submit your timesheet",P2
+"Team lunch tomorrow at noon",P2
+"New employee joining next Monday",P2
+"Office will be closed on Friday",P2
+"Please update your contact information",P2

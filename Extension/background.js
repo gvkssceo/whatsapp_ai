@@ -114,15 +114,7 @@ class BackgroundService {
     }
   }
 
-  async getApiKey() {
-    // This method is deprecated since we no longer use OpenAI API
-    return null;
-  }
-
-  async callOpenAI(text, apiKey) {
-    // This method is deprecated since we no longer use OpenAI API
-    throw new Error('OpenAI API is no longer supported. Please use ML service instead.');
-  }
+  // Removed deprecated OpenAI methods - now using local ML service only
 
   handleExtensionInfo(sendResponse) {
     const manifest = chrome.runtime.getManifest();

@@ -29,5 +29,5 @@ pipe.fit(X_train, y_train)
 pred = pipe.predict(X_test)
 print(classification_report(y_test, pred))
 
-joblib.dump(pipe, "../training/model.joblib")
-print("Saved model to training/model.joblib")
+joblib.dump(pipe, "model.joblib")
+print("Saved model to model.joblib")
