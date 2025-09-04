@@ -228,13 +228,20 @@
             continue;
           }
           
-          // Skip if text contains chat name as a word (likely not a real message)
-          if (chatName && text.toLowerCase().includes(chatName.toLowerCase())) {
-            const words = text.toLowerCase().split(/\s+/);
-            if (words.includes(chatName.toLowerCase())) {
-              continue;
-            }
-          }
+                     // Skip if text contains chat name as a word (likely not a real message)
+           if (chatName && text.toLowerCase().includes(chatName.toLowerCase())) {
+             const words = text.toLowerCase().split(/\s+/);
+             if (words.includes(chatName.toLowerCase())) {
+               continue;
+             }
+           }
+           
+           // Skip if text matches common chat name patterns
+           if (text.match(/^[a-zA-Z\s&\/]+[0-9]+$/i) || // "IT & Software Jobs 679"
+               text.match(/^[a-zA-Z\s&\/]+[0-9]+\s*[a-zA-Z\s]*$/i)) { // "IT & Software Jobs 679 Jobs"
+             console.log(`🗑️ Skipping chat name pattern: "${text}"`);
+             continue;
+           }
           
           // Skip timestamps
           if (text.match(/^\d{1,2}:\d{2}(\s*(am|pm|AM|PM))?$/)) {
@@ -285,8 +292,15 @@
          // Skip if text is exactly the same as chat name (case insensitive)
          if (chatName && text.toLowerCase() === chatName.toLowerCase()) continue;
          
-         // Skip if text starts with chat name (likely a UI element)
-         if (chatName && text.toLowerCase().startsWith(chatName.toLowerCase())) continue;
+                   // Skip if text starts with chat name (likely a UI element)
+          if (chatName && text.toLowerCase().startsWith(chatName.toLowerCase())) continue;
+          
+          // Skip if text matches common chat name patterns
+          if (text.match(/^[a-zA-Z\s&\/]+[0-9]+$/i) || // "IT & Software Jobs 679"
+              text.match(/^[a-zA-Z\s&\/]+[0-9]+\s*[a-zA-Z\s]*$/i)) { // "IT & Software Jobs 679 Jobs"
+            console.log(`🗑️ Skipping chat name pattern: "${text}"`);
+            continue;
+          }
         
         // Skip timestamps and status
         if (text.match(/^\d{1,2}:\d{2}/) || 
@@ -338,8 +352,15 @@
          // Skip if line is exactly the same as chat name (case insensitive)
          if (chatName && line.toLowerCase() === chatName.toLowerCase()) continue;
          
-         // Skip if line starts with chat name (likely a UI element)
-         if (chatName && line.toLowerCase().startsWith(chatName.toLowerCase())) continue;
+                   // Skip if line starts with chat name (likely a UI element)
+          if (chatName && line.toLowerCase().startsWith(chatName.toLowerCase())) continue;
+          
+          // Skip if line matches common chat name patterns
+          if (line.match(/^[a-zA-Z\s&\/]+[0-9]+$/i) || // "IT & Software Jobs 679"
+              line.match(/^[a-zA-Z\s&\/]+[0-9]+\s*[a-zA-Z\s]*$/i)) { // "IT & Software Jobs 679 Jobs"
+            console.log(`🗑️ Skipping chat name pattern: "${line}"`);
+            continue;
+          }
         
         // Skip timestamps and status
         if (line.match(/^\d{1,2}:\d{2}/) || 
@@ -440,13 +461,16 @@
          .replace(/\s*[a-zA-Z]+@[a-zA-Z]+\.[a-zA-Z]+\s*/g, ' ') // Remove email addresses
          .trim();
 
-       // Check if the cleaned text is just a chat name or similar pattern
-       const chatNamePatterns = [
-         /^[a-zA-Z\s&\/]+$/i, // Just letters, spaces, &, / (like "IT & Software Jobs 679")
-         /^[a-zA-Z\s]+$/i, // Just letters and spaces
-         /^[a-zA-Z\s]+[0-9]+$/i, // Letters and spaces followed by numbers
-         /^[a-zA-Z\s]+[0-9]+\s*[a-zA-Z\s]*$/i, // Letters, numbers, and more letters
-       ];
+               // Check if the cleaned text is just a chat name or similar pattern
+        const chatNamePatterns = [
+          /^[a-zA-Z\s&\/]+$/i, // Just letters, spaces, &, / (like "IT & Software Jobs 679")
+          /^[a-zA-Z\s]+$/i, // Just letters and spaces
+          /^[a-zA-Z\s]+[0-9]+$/i, // Letters and spaces followed by numbers
+          /^[a-zA-Z\s]+[0-9]+\s*[a-zA-Z\s]*$/i, // Letters, numbers, and more letters
+          /^[a-zA-Z\s&\/]+[0-9]+$/i, // Letters, spaces, &, / followed by numbers (like "IT & Software Jobs 679")
+          /^[a-zA-Z\s&\/]+[0-9]+\s*[a-zA-Z\s]*$/i, // Letters, spaces, &, /, numbers, and more letters
+          /^[a-zA-Z\s&\/]+[0-9]+\s*[a-zA-Z\s&\/]*$/i, // Letters, spaces, &, /, numbers, and more letters with &, /
+        ];
        
        for (const pattern of chatNamePatterns) {
          if (pattern.test(cleaned) && cleaned.length < 50) {
