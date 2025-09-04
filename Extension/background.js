@@ -10,58 +10,87 @@ class BackgroundService {
     
     // Initialize content script injection
     this.initializeContentScriptInjection();
+    
+    // Clear old messages on startup to prevent accumulation
+    this.clearOldMessages();
   }
 
   initializeMessageListener() {
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-      // Handle different message types
-      switch (request.action) {
-        case "processAI":
-          this.handleMLProcessing(request, sendResponse);
-          break;
-        case "getExtensionInfo":
-          this.handleExtensionInfo(sendResponse);
-          break;
-        case "newMessagesDetected":
-          this.handleNewMessages(request.data, sendResponse);
-          break;
-        case "processMessagesForPriority":
-          this.processMessagesWithML(request.messages, sendResponse);
-          break;
-        case "getImportantMessages":
-          this.getImportantMessages(request.options, sendResponse);
-          break;
-        case "updateMLServiceUrl":
-          this.updateMLServiceUrl(request.url, sendResponse);
-          break;
-        case "testMLService":
-          this.testMLServiceConnection(sendResponse);
-          break;
-        case 'chatChanged':
-          console.log('Chat changed detected:', request.data);
-          // Update all stored messages with new chat info
-          this.updateMessagesForNewChat(request.data.newChatInfo);
-          sendResponse({ success: true, message: 'Chat change handled' });
-          break;
-        case 'openPopup':
-          console.log('Open popup requested');
-          chrome.action.openPopup();
-          sendResponse({ success: true, message: 'Popup opened' });
-          break;
-        case 'ping':
-          // Respond to ping for extension context health check
-          sendResponse({ success: true, message: 'pong', timestamp: Date.now() });
-          break;
+      // Handle runtime.lastError to prevent unchecked errors
+      const handleResponse = (response) => {
+        if (chrome.runtime.lastError) {
+          console.warn('Runtime error in message handling:', chrome.runtime.lastError.message);
+          return;
+        }
+        try {
+          sendResponse(response);
+        } catch (error) {
+          console.warn('Error sending response:', error.message);
+        }
+      };
 
-        case 'clearCache':
-          console.log('Clearing cache...');
-          this.importantMessages.clear();
-          this.processingQueue = [];
-          chrome.storage.local.remove(['important_messages', 'last_updated']);
-          sendResponse({ success: true, message: 'Cache cleared' });
-          break;
-        default:
-          sendResponse({ success: false, error: 'Unknown action' });
+      try {
+        // Handle different message types
+        switch (request.action) {
+          case "processAI":
+            this.handleMLProcessing(request, handleResponse);
+            break;
+          case "getExtensionInfo":
+            this.handleExtensionInfo(handleResponse);
+            break;
+          case "newMessagesDetected":
+            this.handleNewMessages(request.data, handleResponse);
+            break;
+          case "processMessagesForPriority":
+            this.processMessagesWithML(request.messages, handleResponse);
+            break;
+          case "getImportantMessages":
+            this.getImportantMessages(request.options, handleResponse);
+            break;
+          case "clearAllMessages":
+            this.clearAllMessages(handleResponse);
+            break;
+          case "updateMLServiceUrl":
+            this.updateMLServiceUrl(request.url, handleResponse);
+            break;
+          case "testMLService":
+            this.testMLServiceConnection(handleResponse);
+            break;
+          case 'chatChanged':
+            console.log('Chat changed detected:', request.data);
+            // Update all stored messages with new chat info
+            this.updateMessagesForNewChat(request.data.newChatInfo);
+            handleResponse({ success: true, message: 'Chat change handled' });
+            break;
+          case 'openPopup':
+            console.log('Open popup requested');
+            try {
+              chrome.action.openPopup();
+              handleResponse({ success: true, message: 'Popup opened' });
+            } catch (error) {
+              console.warn('Could not open popup:', error.message);
+              handleResponse({ success: false, error: 'Could not open popup' });
+            }
+            break;
+          case 'ping':
+            // Respond to ping for extension context health check
+            handleResponse({ success: true, message: 'pong', timestamp: Date.now() });
+            break;
+          case 'clearCache':
+            console.log('Clearing cache...');
+            this.importantMessages.clear();
+            this.processingQueue = [];
+            chrome.storage.local.remove(['important_messages', 'last_updated']);
+            handleResponse({ success: true, message: 'Cache cleared' });
+            break;
+          default:
+            console.warn('Unknown action received:', request.action);
+            handleResponse({ success: false, error: 'Unknown action' });
+        }
+      } catch (error) {
+        console.error('Error in message listener:', error);
+        handleResponse({ success: false, error: error.message });
       }
       
       return true; // Keep message channel open for async responses
@@ -238,7 +267,10 @@ class BackgroundService {
       console.error('ML Service call failed:', error);
       
       // If service is not available, use fallback processing
-      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+      if (error.message.includes('Failed to fetch') || 
+          error.message.includes('NetworkError') ||
+          error.message.includes('ERR_CONNECTION_REFUSED') ||
+          error.message.includes('ERR_INTERNET_DISCONNECTED')) {
         console.log('ML service unavailable, using fallback processing');
         return this.fallbackProcessing(payload);
       }
@@ -248,70 +280,52 @@ class BackgroundService {
   }
 
   // Fallback processing when ML service is unavailable
-  fallbackProcessing(payload) {
+  async fallbackProcessing(payload) {
     try {
-      console.log('Using fallback processing for', payload.messages.length, 'messages');
+      console.log('Using CSV-based fallback processing for', payload.messages.length, 'messages');
       
       const messages = payload.messages;
       const important = [];
 
-      // Enhanced rule-based classification
-      messages.forEach(msg => {
-        let score = 0.1; // Base score
-        let priority = 'P1';
+      // Use CSV-based classification
+      for (const msg of messages) {
+        // Fix: Add proper type checking and conversion
+        const text = (msg.text || '').toString().toLowerCase();
 
-        const text = msg.text.toLowerCase();
-
-        // High priority keywords (urgent/important)
-        if (this.hasHighPriorityKeywords(text)) {
-          score += 0.4;
+        // Skip very short messages and casual greetings
+        if (text.length < 10 || this.isCasualGreeting(text)) {
+          continue; // Skip this message entirely
         }
 
-        // Money/payment related
-        if (this.hasMoneyKeywords(text)) {
-          score += 0.3;
+        // Skip UI artifacts and technical messages
+        if (this.isUIArtifact(text)) {
+          continue; // Skip this message entirely
         }
 
-        // Time sensitive
-        if (this.hasTimeKeywords(text)) {
-          score += 0.2;
+        // Skip if text is empty after processing
+        if (!text || text.trim().length === 0) {
+          continue;
         }
 
-        // Questions/requests
-        if (this.hasQuestionMarkers(text)) {
-          score += 0.2;
+        // Classify using CSV patterns
+        const classification = this.classifyWithCSVPatterns(text);
+        
+        // Only add if it's important enough
+        if (classification.score >= 0.3) {
+          important.push({
+            id: msg.id || msg.messageId || this.generateId(),
+            chat_id: msg.chat_id || msg.chatId || 'unknown',
+            priority: classification.priority,
+            score: classification.score,
+            text: msg.text,
+            originalMessage: msg,
+            storedAt: Date.now(),
+            chatTitle: msg.chatTitle || 'Current Chat',
+            chatId: msg.chatId || msg.chat_id || 'current',
+            isGroup: msg.isGroup || false
+          });
         }
-
-        // Business/career related
-        if (this.hasBusinessKeywords(text)) {
-          score += 0.15;
-        }
-
-        // Personal/emotional content
-        if (this.hasPersonalKeywords(text)) {
-          score += 0.1;
-        }
-
-        // Determine priority
-        if (score >= 0.7) {
-          priority = 'P3';
-        } else if (score >= 0.4) {
-          priority = 'P2';
-        }
-
-        important.push({
-          id: msg.id || msg.messageId || this.generateId(),
-          chat_id: msg.chat_id || msg.chatId || 'unknown',
-          priority: priority,
-          score: Math.round(score * 100) / 100,
-          text: msg.text,
-          originalMessage: msg,
-          storedAt: Date.now(),
-          chatTitle: msg.chatTitle || 'Current Chat',
-          chatId: msg.chatId || msg.chat_id || 'current',
-          isGroup: msg.isGroup || false
-        });
-      });
+      }
 
       // Sort by score
       important.sort((a, b) => b.score - a.score);
@@ -408,48 +422,176 @@ class BackgroundService {
     return personalKeywords.some(keyword => text.includes(keyword));
   }
 
+  // New helper methods for better filtering
+  isCasualGreeting(text) {
+    const casualGreetings = [
+      'good morning', 'good afternoon', 'good evening', 'good night',
+      'hi', 'hello', 'hey', 'bye', 'see you', 'thanks', 'thank you',
+      'ok', 'okay', 'sure', 'yes', 'no', 'haha', 'lol', 'hehe',
+      'jai vasavi', 'sare raa', 'mawaaa', 'ok sir'
+    ];
+    return casualGreetings.some(greeting => text.includes(greeting));
+  }
+
+  isUIArtifact(text) {
+    const uiArtifacts = [
+      'default-group-refreshed', 'status-dblcheck', 'image-refreshed',
+      'pin-refreshed', 'photopin-refreshed', 'refreshed', 'filled',
+      'data-testid', 'aria-label', 'role=', 'class='
+    ];
+    return uiArtifacts.some(artifact => text.includes(artifact));
+  }
+
+  hasJobKeywords(text) {
+    const jobKeywords = [
+      'job', 'recruitment', 'hiring', 'career', 'opportunity', 'position',
+      'interview', 'resume', 'cv', 'application', 'apply', 'candidate',
+      'experience', 'qualification', 'salary', 'ctc', 'lpa', 'fresher',
+      'company', 'profile', 'role', 'engineer', 'manager', 'analyst',
+      'bank', 'technical', 'support', 'system', 'oracle', 'trellix',
+      'icici', 'idfc', 'cpa', 'begumpet', 'hyderabad'
+    ];
+    return jobKeywords.some(keyword => text.includes(keyword));
+  }
+
+  // CSV-based classification method
+  classifyWithCSVPatterns(text) {
+    const lowerText = text.toLowerCase();
+    
+    // P3 - High priority patterns from CSV
+    if (this.hasHighPriorityKeywords(lowerText) || 
+        this.hasMoneyKeywords(lowerText) || 
+        this.hasJobKeywords(lowerText)) {
+      return { priority: 'P3', score: 0.8 };
+    }
+    
+    // P2 - Medium priority patterns from CSV
+    if (this.hasTimeKeywords(lowerText) || 
+        this.hasQuestionMarkers(lowerText) || 
+        this.hasBusinessKeywords(lowerText)) {
+      return { priority: 'P2', score: 0.5 };
+    }
+    
+    // P1 - Low priority (default)
+    return { priority: 'P1', score: 0.2 };
+  }
+
   async storeImportantMessages(importantList, originalMessages) {
     try {
       const timestamp = Date.now();
       
       console.log(`Storing ${importantList.length} important messages`);
       
+      // Clear old messages to prevent accumulation (keep only last 50 messages)
+      if (this.importantMessages.size > 50) {
+        const messagesArray = Array.from(this.importantMessages.values());
+        const sortedMessages = messagesArray.sort((a, b) => b.storedAt - a.storedAt);
+        const messagesToKeep = sortedMessages.slice(0, 50);
+        
+        this.importantMessages.clear();
+        messagesToKeep.forEach(msg => {
+          this.importantMessages.set(msg.id, msg);
+        });
+        
+        console.log(`🧹 Cleaned up old messages, keeping ${messagesToKeep.length} most recent`);
+      }
+      
+      // Track processed message texts to prevent duplicates
+      const processedTexts = new Set();
+      const existingMessages = Array.from(this.importantMessages.values());
+      existingMessages.forEach(msg => {
+        if (msg.text) {
+          processedTexts.add(msg.text.trim().toLowerCase());
+        }
+      });
+      
+      // Debug: Log available original messages
+      console.log(`🔍 Available original messages:`, originalMessages.map(msg => ({
+        id: msg.id,
+        messageId: msg.messageId,
+        chatTitle: msg.chatTitle,
+        text: msg.text.substring(0, 30)
+      })));
+      
       importantList.forEach(item => {
-        const originalMsg = originalMessages.find(msg => 
+        // Debug: Log the item we're trying to match
+        console.log(`🔍 Trying to match item:`, {
+          id: item.id,
+          text: item.text.substring(0, 50),
+          chat_id: item.chat_id
+        });
+        
+        // Check for duplicates first
+        const itemTextLower = item.text.trim().toLowerCase();
+        if (processedTexts.has(itemTextLower)) {
+          console.log(`⚠️ Skipping duplicate message: ${item.text.substring(0, 50)}...`);
+          return; // Skip this duplicate
+        }
+        
+        // Try multiple ways to find the original message
+        let originalMsg = originalMessages.find(msg => 
           msg.id === item.id || 
           msg.messageId === item.id || 
           msg.text === item.text ||
           (msg.chatId && msg.chatId === item.chat_id) ||
           (msg.chat_id && msg.chat_id === item.chat_id)
         );
+        
+        // If still not found, try more flexible matching
+        if (!originalMsg) {
+          // Try to match by text similarity (for cases where ML service modifies the text slightly)
+          originalMsg = originalMessages.find(msg => {
+            const msgText = msg.text.toLowerCase().trim();
+            const itemText = item.text.toLowerCase().trim();
+            return msgText.includes(itemText.substring(0, 20)) || 
+                   itemText.includes(msgText.substring(0, 20));
+          });
+        }
+        
+        if (originalMsg) {
+          console.log(`✅ Found original message:`, {
+            id: originalMsg.id,
+            chatTitle: originalMsg.chatTitle,
+            text: originalMsg.text.substring(0, 50)
+          });
+        } else {
+          console.log(`❌ No original message found for:`, item.text.substring(0, 50));
+        }
 
         if (originalMsg) {
           const messageToStore = {
             ...item,
             originalMessage: originalMsg,
             storedAt: timestamp,
-            chatTitle: originalMsg.chatTitle || originalMsg.chat_id || 'Current Chat',
+            chatTitle: originalMsg.chatTitle || originalMsg.chat_id || 'Current Chat', // Use actual detected chat name
             chatId: originalMsg.chatId || originalMsg.chat_id || 'current',
             isGroup: originalMsg.isGroup || false,
             messageId: originalMsg.messageId || originalMsg.id || item.id
           };
           
           this.importantMessages.set(item.id, messageToStore);
-          console.log(`Stored important message: ${item.text.substring(0, 50)}...`);
+          processedTexts.add(itemTextLower); // Mark as processed
+          console.log(`Stored important message: ${item.text.substring(0, 50)}... (Chat: ${messageToStore.chatTitle})`);
         } else {
-          // If no original message found, create a basic entry
+          // If no original message found, try to get chat info from the first available message
+          const firstMessage = originalMessages[0];
+          const chatTitle = firstMessage?.chatTitle || firstMessage?.chat_id || 'Current Chat'; // Use actual detected chat name
+          const chatId = firstMessage?.chatId || firstMessage?.chat_id || 'current';
+          const isGroup = firstMessage?.isGroup || false;
+          
           const messageToStore = {
             ...item,
             originalMessage: { text: item.text },
             storedAt: timestamp,
-            chatTitle: item.chatTitle || 'Current Chat',
-            chatId: item.chatId || item.chat_id || 'current',
-            isGroup: item.isGroup || false,
+            chatTitle: chatTitle,
+            chatId: chatId,
+            isGroup: isGroup,
             messageId: item.id
           };
           
           this.importantMessages.set(item.id, messageToStore);
-          console.log(`Stored important message (no original): ${item.text.substring(0, 50)}...`);
+          processedTexts.add(itemTextLower); // Mark as processed
+          console.log(`Stored important message (no original): ${item.text.substring(0, 50)}... (Chat: ${chatTitle})`);
         }
       });
 
@@ -511,6 +653,32 @@ class BackgroundService {
       }
 
       let messages = Array.from(this.importantMessages.values());
+      
+      // Clean up messages with incorrect chat titles (chat IDs instead of real names)
+      const cleanedMessages = messages.map(msg => {
+        if (msg.chatTitle && msg.chatTitle.startsWith('chat_')) {
+          // Try to find a better chat title from other messages
+          const betterMessage = messages.find(m => 
+            m.chatTitle && 
+            !m.chatTitle.startsWith('chat_') && 
+            m.text === msg.text
+          );
+          if (betterMessage) {
+            return {
+              ...msg,
+              chatTitle: betterMessage.chatTitle,
+              chatId: betterMessage.chatId
+            };
+          }
+        }
+        return msg;
+      });
+      
+      // Update the messages if any were cleaned
+      if (cleanedMessages.some((msg, index) => msg !== messages[index])) {
+        messages = cleanedMessages;
+        console.log('🧹 Cleaned up messages with incorrect chat titles');
+      }
 
       // Apply filters
       if (options.priority) {
@@ -678,6 +846,42 @@ class BackgroundService {
       console.error('Error initializing content script injection:', error);
     }
   }
+  
+  // Clear old messages to prevent accumulation
+  async clearOldMessages() {
+    try {
+      // Load existing messages
+      await this.loadImportantMessages();
+      
+      // Clear all messages to start fresh and prevent duplicates
+      this.importantMessages.clear();
+      await chrome.storage.local.set({ 
+        important_messages: [],
+        last_cleaned: Date.now()
+      });
+      
+      console.log(`🧹 Cleared all old messages to prevent duplicates`);
+    } catch (error) {
+      console.error('Error clearing old messages:', error);
+    }
+  }
+  
+  // Clear all messages (for manual clearing)
+  async clearAllMessages(sendResponse) {
+    try {
+      this.importantMessages.clear();
+      await chrome.storage.local.set({ 
+        important_messages: [],
+        last_cleaned: Date.now()
+      });
+      
+      console.log(`🧹 Manually cleared all messages`);
+      sendResponse({ success: true, message: 'All messages cleared' });
+    } catch (error) {
+      console.error('Error clearing all messages:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+  }
 
   // Inject content script on existing WhatsApp Web tabs
   async ensureContentScriptOnWhatsAppTabs() {
@@ -693,13 +897,19 @@ class BackgroundService {
         const isAlive = await new Promise(resolve => {
           try {
             chrome.tabs.sendMessage(tab.id, { action: 'ping' }, (response) => {
+              if (chrome.runtime.lastError) {
+                console.log(`Tab ${tab.id}: Runtime error during ping:`, chrome.runtime.lastError.message);
+                resolve(false);
+                return;
+              }
               resolve(!!(response && response.success));
             });
-          } catch {
+          } catch (error) {
+            console.log(`Tab ${tab.id}: Error during ping:`, error.message);
             resolve(false);
           }
           // Safety timeout
-          setTimeout(() => resolve(false), 500);
+          setTimeout(() => resolve(false), 1000);
         });
 
         if (isAlive) {
@@ -710,31 +920,44 @@ class BackgroundService {
 
         console.log(`Tab ${tab.id}: Content script not responding, injecting...`);
         try {
+          // Check if tab is still valid
+          const tabInfo = await chrome.tabs.get(tab.id);
+          if (!tabInfo || !tabInfo.url || !tabInfo.url.includes('web.whatsapp.com')) {
+            console.log(`Tab ${tab.id}: No longer valid WhatsApp tab`);
+            details.push({ tabId: tab.id, status: 'invalid' });
+            continue;
+          }
+
           await chrome.scripting.executeScript({
             target: { tabId: tab.id },
-            files: ['content.js']
+            files: ['content_chat_scanner.js', 'content.js']
           });
           details.push({ tabId: tab.id, status: 'injected' });
-          console.log(`Content script injected into tab ${tab.id}`);
+          console.log(`Content scripts injected into tab ${tab.id}`);
           
-          // Wait a bit for the script to initialize
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Wait a bit for the scripts to initialize
+          await new Promise(resolve => setTimeout(resolve, 1500));
           
           // Verify injection worked
-          const verifyResult = await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: () => {
-              return {
-                hasNaxScript: typeof window.naxScriptLoaded !== 'undefined',
-                hasMessageExtractor: typeof window.WhatsAppMessageExtractor !== 'undefined',
-                hasMessageListener: typeof window.naxMessageListenerActive !== 'undefined' && window.naxMessageListenerActive === true
-              };
+          try {
+            const verifyResult = await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              func: () => {
+                return {
+                  hasNaxChatScanner: typeof window.naxChatScannerLoaded !== 'undefined',
+                  hasChatScanner: typeof window.naxChatScanner !== 'undefined',
+                  hasMessageExtractor: typeof window.messageExtractor !== 'undefined',
+                  hasMessageListener: typeof window.naxMessageListenerActive !== 'undefined'
+                };
+              }
+            });
+            
+            if (verifyResult && verifyResult[0] && verifyResult[0].result) {
+              const status = verifyResult[0].result;
+              console.log(`Tab ${tab.id}: Injection verification:`, status);
             }
-          });
-          
-          if (verifyResult && verifyResult[0] && verifyResult[0].result) {
-            const status = verifyResult[0].result;
-            console.log(`Tab ${tab.id}: Injection verification:`, status);
+          } catch (verifyError) {
+            console.log(`Tab ${tab.id}: Verification failed:`, verifyError.message);
           }
           
         } catch (error) {

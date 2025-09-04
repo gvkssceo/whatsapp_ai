@@ -149,17 +149,56 @@ class UIManager {
   }
 
   // Send message with retry mechanism for content script communication
-  static async sendMessageWithRetry(tabId, message, maxRetries = 3) {
+  static async sendMessageWithRetry(tabId, message, maxRetries = 5) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const response = await chrome.tabs.sendMessage(tabId, message);
+        console.log(`Sending message attempt ${attempt}:`, message.action);
+        
+        // Check if tab is valid first
+        const tab = await chrome.tabs.get(tabId);
+        if (!tab || !tab.url || !tab.url.includes('web.whatsapp.com')) {
+          throw new Error('Tab is not WhatsApp Web');
+        }
+        
+        // Use a promise wrapper to handle runtime.lastError
+        const response = await new Promise((resolve, reject) => {
+          chrome.tabs.sendMessage(tabId, message, (response) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(response);
+            }
+          });
+        });
+        
+        console.log(`✅ Message sent successfully on attempt ${attempt}`);
         return response;
+        
       } catch (error) {
+        console.warn(`❌ Attempt ${attempt} failed:`, error.message);
+        
         if (error.message.includes('Could not establish connection') && attempt < maxRetries) {
-          console.log(`Attempt ${attempt} failed, retrying in ${attempt * 500}ms...`);
-          await new Promise(resolve => setTimeout(resolve, attempt * 500));
+          console.log(`Retrying in ${attempt * 1000}ms...`);
+          
+          // Try to inject content scripts if connection failed
+          if (attempt === 2) {
+            try {
+              console.log('Attempting to re-inject content scripts...');
+              await chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                files: ['whatsapp_error_handler.js', 'content_chat_scanner.js', 'content.js']
+              });
+              console.log('Content scripts re-injected');
+            } catch (injectionError) {
+              console.warn('Content script injection failed:', injectionError.message);
+            }
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, attempt * 1000));
           continue;
         }
+        
+        // If it's the last attempt or a different error, throw it
         throw error;
       }
     }
@@ -487,6 +526,76 @@ class UIManager {
     }
   }
 
+  // Helper function to group messages by chat
+  static groupMessagesByChat(messages) {
+    const grouped = {};
+    messages.forEach(msg => {
+      const chatTitle = msg.chatTitle || 'Unknown Chat';
+      if (!grouped[chatTitle]) {
+        grouped[chatTitle] = [];
+      }
+      grouped[chatTitle].push(msg);
+    });
+    
+    // Sort chats by highest priority message
+    const sortedChats = Object.entries(grouped).sort(([, a], [, b]) => {
+      const maxScoreA = Math.max(...a.map(msg => msg.score || 0));
+      const maxScoreB = Math.max(...b.map(msg => msg.score || 0));
+      return maxScoreB - maxScoreA;
+    });
+    
+    return Object.fromEntries(sortedChats);
+  }
+
+  // Update chat filter dropdown
+  static updateChatFilter(messages) {
+    try {
+      const chatFilter = document.getElementById('chat-filter');
+      if (!chatFilter) return;
+      
+      // Get unique chat titles
+      const uniqueChats = [...new Set(messages.map(msg => msg.chatTitle || 'Unknown Chat'))];
+      
+      // Clear existing options (except "All Chats")
+      chatFilter.innerHTML = '<option value="">All Chats</option>';
+      
+      // Add chat options sorted by name
+      uniqueChats.sort().forEach(chatTitle => {
+        const option = document.createElement('option');
+        option.value = chatTitle;
+        option.textContent = chatTitle;
+        chatFilter.appendChild(option);
+      });
+      
+      console.log(`Updated chat filter with ${uniqueChats.length} chats`);
+    } catch (error) {
+      console.error('Error updating chat filter:', error);
+    }
+  }
+
+  // Submit user feedback
+  static submitFeedback(messageId, rating) {
+    try {
+      const feedback = {
+        messageId,
+        rating,
+        timestamp: Date.now()
+      };
+      
+      // Store feedback locally
+      const existingFeedback = JSON.parse(localStorage.getItem('whatsapp_ai_feedback') || '[]');
+      existingFeedback.push(feedback);
+      localStorage.setItem('whatsapp_ai_feedback', JSON.stringify(existingFeedback));
+      
+      // Show thank you message
+      this.showStatus(`Thanks for your feedback! ${rating === 5 ? '👍' : '👎'}`, 'success');
+      
+      console.log(`Feedback submitted for message ${messageId}: ${rating}`);
+    } catch (error) {
+      console.error('Error submitting feedback:', error);
+    }
+  }
+
   // Render important messages
   static renderImportantMessages(importantMessages) {
     try {
@@ -516,31 +625,76 @@ class UIManager {
         countElement.textContent = importantMessages.length;
       }
       
+      // Update chat filter dropdown
+      this.updateChatFilter(importantMessages);
+      
       // Update the messages list
       const listElement = document.getElementById('messages-list');
       if (listElement) {
         listElement.innerHTML = '';
         
-        importantMessages.slice(0, 20).forEach((msg, index) => {
-          const msgElement = document.createElement('div');
-          msgElement.className = `message-card priority-${msg.priority || 'P1'}`;
+        // Group messages by chat for better organization
+        const messagesByChat = this.groupMessagesByChat(importantMessages.slice(0, 20));
+        
+        // Render chat groups
+        Object.entries(messagesByChat).forEach(([chatTitle, chatMessages]) => {
+          // Create chat group container
+          const chatGroupElement = document.createElement('div');
+          chatGroupElement.className = 'chat-group';
           
-          const priorityText = msg.priority || 'P1';
-          const priorityClass = priorityText === 'P3' ? 'P3' : (priorityText === 'P2' ? 'P2' : 'P1');
+          // Chat group header
+          const chatHeaderElement = document.createElement('div');
+          chatHeaderElement.className = 'chat-group-header';
           
-          msgElement.innerHTML = `
-            <div class="message-header">
-              <div class="chat-info">${msg.chatTitle || 'Unknown Chat'}</div>
-              <span class="priority-badge ${priorityClass}">${priorityText}</span>
+          const chatInfo = chatMessages[0]; // Get chat info from first message
+          const isGroup = chatInfo.isGroup || false;
+          const messageCount = chatMessages.length;
+          const avgScore = (chatMessages.reduce((sum, msg) => sum + (msg.score || 0), 0) / messageCount).toFixed(1);
+          
+          chatHeaderElement.innerHTML = `
+            <div class="chat-badge ${isGroup ? 'group' : 'individual'}">
+              <span class="chat-icon">${isGroup ? '👥' : '👤'}</span>
+              <span class="chat-name">${chatTitle}</span>
+              <span class="message-count-badge">${messageCount}</span>
             </div>
-            <div class="message-text">${this.escapeHtml(msg.text)}</div>
-            <div class="message-meta">
-              <span class="score">Score: ${msg.score || 0}</span>
-              <span class="time">${this.formatTime(msg.storedAt)}</span>
+            <div class="chat-group-stats">
+              <span>Avg Score: ${avgScore}</span>
             </div>
           `;
           
-          listElement.appendChild(msgElement);
+          chatGroupElement.appendChild(chatHeaderElement);
+          
+          // Render messages in this chat
+          chatMessages.forEach((msg, index) => {
+            const msgElement = document.createElement('div');
+            msgElement.className = `message-card priority-${msg.priority || 'P1'}`;
+            
+            const priorityText = msg.priority || 'P1';
+            const priorityClass = priorityText === 'P3' ? 'P3' : (priorityText === 'P2' ? 'P2' : 'P1');
+            
+            msgElement.innerHTML = `
+              <div class="chat-header-enhanced">
+                <div class="priority-indicator">
+                  <span class="priority-badge ${priorityClass}">${priorityText}</span>
+                  <span class="priority-score">${msg.score || 0}</span>
+                </div>
+              </div>
+              <div class="message-text">${this.escapeHtml(msg.text)}</div>
+              <div class="message-meta">
+                <span class="time">${this.formatTime(msg.storedAt)}</span>
+              </div>
+              <div class="feedback-container">
+                <div class="feedback-buttons">
+                  <button class="feedback-btn thumbs-up" onclick="UIManager.submitFeedback('${msg.id}', 5)" title="Correct classification">👍</button>
+                  <button class="feedback-btn thumbs-down" onclick="UIManager.submitFeedback('${msg.id}', 1)" title="Wrong classification">👎</button>
+                </div>
+              </div>
+            `;
+            
+            chatGroupElement.appendChild(msgElement);
+          });
+          
+          listElement.appendChild(chatGroupElement);
         });
         
         // Add "show more" if there are more messages
@@ -586,13 +740,28 @@ class UIManager {
       if (response.messages && response.messages.length > 0) {
         this.importantMessages = response.messages;
         
+        // Debug: Log chat titles being processed
+        const uniqueChatTitles = [...new Set(this.importantMessages.map(msg => msg.chatTitle))];
+        console.log('🔍 Chat titles in important messages:', uniqueChatTitles);
+        console.log('🔍 Sample message with chat title:', this.importantMessages[0]);
+        
         // Update the UI
         UIManager.renderMessages(this.importantMessages);
+        
+        // Calculate priority stats
+        const p1Count = this.importantMessages.filter(msg => msg.priority === 'P1').length;
+        const p2Count = this.importantMessages.filter(msg => msg.priority === 'P2').length;
+        const p3Count = this.importantMessages.filter(msg => msg.priority === 'P3').length;
+        const chatCount = new Set(this.importantMessages.map(msg => msg.chatTitle)).size;
         
         // Update stats
         const stats = {
           total: response.total || response.messages.length,
-          filtered: response.filtered || response.messages.length
+          filtered: response.filtered || response.messages.length,
+          p1: p1Count,
+          p2: p2Count,
+          p3: p3Count,
+          chats: chatCount
         };
         
         UIManager.updateStats(stats);
@@ -731,6 +900,9 @@ class MessageProcessor {
   static processingTimeout = null;
   static messages = [];
   static importantMessages = [];
+  static lastDisplayTime = 0;
+  static displayDebounceTimeout = null;
+  static lastMessageHash = null;
 
   static async getAllMessages() {
     try {
@@ -776,15 +948,15 @@ class MessageProcessor {
       console.log('Processing current chat...');
 
       // Get the chat messages and chat info in one call
-      const chatResponse = await chrome.tabs.sendMessage(tab.id, { action: "getChats" });
+      const chatResponse = await chrome.tabs.sendMessage(tab.id, { action: "getAllChatsAndMessages" });
       
       console.log('Chat response:', chatResponse);
       
-      if (!chatResponse.success || !chatResponse.chats || chatResponse.chats.length === 0) {
-        throw new Error('No messages found in current chat');
+      if (!chatResponse.success || !chatResponse.messages || chatResponse.messages.length === 0) {
+        throw new Error(chatResponse.error || 'No messages found in current chat');
       }
 
-      console.log(`Found ${chatResponse.chats.length} messages in current chat`);
+      console.log(`Found ${chatResponse.messages.length} messages in current chat`);
 
       // Get chat title from chat info or use a default
       const chatTitle = chatResponse.chatInfo?.title || 'Current Chat';
@@ -793,7 +965,7 @@ class MessageProcessor {
       console.log('Using chat info:', { title: chatTitle, id: chatId });
 
       // Check if we've already processed this chat recently
-      const chatKey = `${chatId}_${chatResponse.chats.length}`;
+      const chatKey = `${chatId}_${chatResponse.messages.length}`;
       if (this.lastProcessedChat === chatKey) {
         console.log('Chat already processed recently, skipping...');
         UIManager.showStatus('Chat already processed recently', 'info');
@@ -801,14 +973,14 @@ class MessageProcessor {
       }
 
       // Convert the simple text messages to the format expected by ML service
-      const messages = chatResponse.chats.map((text, index) => ({
-        id: `msg_${index}_${Date.now()}`,
-        chat_id: chatId,
-        chatTitle: chatTitle,
-        chatId: chatId,
-        sender: 'user',
-        text: text,
-        ts: Date.now(),
+      const messages = chatResponse.messages.map((msg, index) => ({
+        id: msg.messageId || msg.id || `msg_${index}_${Date.now()}`,
+        chat_id: msg.chatId || chatId,
+        chatTitle: msg.chatTitle || chatTitle,
+        chatId: msg.chatId || chatId,
+        sender: msg.sender || 'user',
+        text: msg.text,
+        ts: msg.timestamp || Date.now(),
         isGroup: chatResponse.chatInfo?.isGroup || false
       }));
 
@@ -1071,9 +1243,23 @@ class MessageProcessor {
     }
   }
 
-  // Display all important messages
+  // Display all important messages with debouncing
   static async displayAllImportantMessages() {
     try {
+      // Debounce multiple calls within 500ms
+      const now = Date.now();
+      if (now - this.lastDisplayTime < 500) {
+        console.log('Debouncing displayAllImportantMessages call...');
+        if (this.displayDebounceTimeout) {
+          clearTimeout(this.displayDebounceTimeout);
+        }
+        this.displayDebounceTimeout = setTimeout(() => {
+          this.displayAllImportantMessages();
+        }, 500);
+        return;
+      }
+      
+      this.lastDisplayTime = now;
       console.log('Displaying all important messages...');
       
       // Get all important messages from background
@@ -1093,13 +1279,28 @@ class MessageProcessor {
       if (response.messages && response.messages.length > 0) {
         this.importantMessages = response.messages;
         
+        // Debug: Log chat titles being processed
+        const uniqueChatTitles = [...new Set(this.importantMessages.map(msg => msg.chatTitle))];
+        console.log('🔍 Chat titles in important messages:', uniqueChatTitles);
+        console.log('🔍 Sample message with chat title:', this.importantMessages[0]);
+        
         // Update the UI
         UIManager.renderMessages(this.importantMessages);
+        
+        // Calculate priority stats
+        const p1Count = this.importantMessages.filter(msg => msg.priority === 'P1').length;
+        const p2Count = this.importantMessages.filter(msg => msg.priority === 'P2').length;
+        const p3Count = this.importantMessages.filter(msg => msg.priority === 'P3').length;
+        const chatCount = new Set(this.importantMessages.map(msg => msg.chatTitle)).size;
         
         // Update stats
         const stats = {
           total: response.total || response.messages.length,
-          filtered: response.filtered || response.messages.length
+          filtered: response.filtered || response.messages.length,
+          p1: p1Count,
+          p2: p2Count,
+          p3: p3Count,
+          chats: chatCount
         };
         
         UIManager.updateStats(stats);
@@ -1342,6 +1543,10 @@ class AIProcessor {
       
       let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       
+      if (!tab || !tab.url) {
+        throw new Error('No active tab found');
+      }
+      
       if (!tab.url.includes('web.whatsapp.com')) {
         throw new Error('Please navigate to WhatsApp Web first');
       }
@@ -1382,7 +1587,7 @@ class AIProcessor {
       
       UIManager.showConnectionStatus('success', 'Connection established successfully!');
 
-      const response = await UIManager.sendMessageWithRetry(tab.id, { action: "getChats" });
+      const response = await UIManager.sendMessageWithRetry(tab.id, { action: "getAllChatsAndMessages" });
       console.log('Chat response from content script:', response);
       
       if (!response) {
@@ -1598,6 +1803,20 @@ class WhatsAppAIHelper {
     // Message management events
     document.getElementById('refresh-messages').addEventListener('click', () => MessageProcessor.refreshMessages());
     
+    // Clear all messages button
+    document.getElementById('clear-all-messages').addEventListener('click', () => {
+      if (confirm('Are you sure you want to clear all messages? This action cannot be undone.')) {
+        chrome.runtime.sendMessage({ action: 'clearAllMessages' }, (response) => {
+          if (response && response.success) {
+            UIManager.showStatus('All messages cleared successfully', 'success');
+            MessageProcessor.displayAllImportantMessages(); // Refresh the display
+          } else {
+            UIManager.showStatus('Failed to clear messages', 'error');
+          }
+        });
+      }
+    });
+    
     document.getElementById('startMonitoring').addEventListener('click', () => this.startMonitoring());
     document.getElementById('stopMonitoring').addEventListener('click', () => this.stopMonitoring());
     document.getElementById('testConnection').addEventListener('click', () => this.testConnection());
@@ -1605,6 +1824,15 @@ class WhatsAppAIHelper {
     document.getElementById('showAvailableChats').addEventListener('click', () => this.showAvailableChats());
     document.getElementById('autoFetchAll').addEventListener('click', () => this.autoFetchAllChatsAndMessages());
     document.getElementById('forceRefreshPage').addEventListener('click', () => this.forceRefreshPage());
+    
+    // Add test DOM scanning button if it exists
+    const testDOMButton = document.getElementById('testDOMScanning');
+    if (testDOMButton) {
+      testDOMButton.addEventListener('click', () => this.testDOMScanning());
+    }
+    
+    // Add a test button for debugging (create if it doesn't exist)
+    this.addTestButton();
     
     // Filter events
     document.getElementById('priority-filter').addEventListener('change', MessageProcessor.filterMessages);
@@ -1967,6 +2195,33 @@ class WhatsAppAIHelper {
           // Display messages in the UI
           this.displayExtractedMessages(messages);
           UIManager.showStatus(`📱 Displaying ${messages.length} messages from all chats!`, 'success');
+          
+          // Wait a moment for ML processing to complete, then refresh important messages
+          setTimeout(async () => {
+            console.log('🔄 Refreshing important messages after ML processing...');
+            try {
+              await MessageProcessor.displayAllImportantMessages();
+            } catch (error) {
+              console.log('Could not refresh important messages:', error);
+            }
+          }, 2000);
+          
+          // Also debug chat title detection
+          setTimeout(async () => {
+            console.log('🔍 Debugging chat title detection...');
+            try {
+              const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+              if (tab.url.includes('web.whatsapp.com')) {
+                const debugResponse = await chrome.tabs.sendMessage(tab.id, { action: "debugMessageExtraction" });
+                if (debugResponse && debugResponse.success) {
+                  console.log('🔍 Chat Title Debug Info:', debugResponse.chatTitleDebug);
+                  console.log('🔍 Current Chat Info:', debugResponse.chatInfo);
+                }
+              }
+            } catch (error) {
+              console.log('Could not debug chat title:', error);
+            }
+          }, 3000);
         } else {
           UIManager.showStatus('ℹ️ No messages were extracted from the chats.', 'info');
         }
@@ -2009,11 +2264,15 @@ class WhatsAppAIHelper {
       const emptyState = document.getElementById('empty-state');
       
       if (totalMessages === 0) {
-        emptyState.style.display = 'block';
+        if (emptyState) {
+          emptyState.style.display = 'block';
+        }
         return;
       }
       
-      emptyState.style.display = 'none';
+      if (emptyState) {
+        emptyState.style.display = 'none';
+      }
       
       // Clear existing messages
       const existingMessages = messagesList.querySelectorAll('.message-card');
@@ -2041,14 +2300,24 @@ class WhatsAppAIHelper {
       const priority = message.priority || 'P1';
       card.classList.add(`priority-${priority}`);
       
+      const isGroup = message.isGroup || false;
+      const chatTitle = message.chatTitle || 'Unknown Chat';
+      const score = message.score || 0;
+      
       card.innerHTML = `
-        <div class="message-header">
-          <div class="chat-info">${message.chatTitle || 'Unknown Chat'}</div>
-          <div class="priority-badge ${priority}">${priority}</div>
+        <div class="chat-header-enhanced">
+          <div class="chat-badge ${isGroup ? 'group' : 'individual'}">
+            <span class="chat-icon">${isGroup ? '👥' : '👤'}</span>
+            <span class="chat-name">${chatTitle}</span>
+          </div>
+          <div class="priority-indicator">
+            <span class="priority-badge ${priority}">${priority}</span>
+            <span class="priority-score">${score}</span>
+          </div>
         </div>
         <div class="message-text">${message.text || 'No text'}</div>
         <div class="message-meta">
-          <span>${message.type || 'unknown'}</span>
+          <span>${message.type || 'text'}</span>
           <span>${message.timestamp ? new Date(message.timestamp).toLocaleTimeString() : 'Unknown time'}</span>
         </div>
       `;
@@ -2116,6 +2385,95 @@ class WhatsAppAIHelper {
     } catch (error) {
       console.error('Error force refreshing page:', error);
       UIManager.showStatus('❌ Error refreshing page: ' + error.message, 'error');
+    }
+  }
+
+  async testDOMScanning() {
+    try {
+      console.log('=== TESTING DOM SCANNING ===');
+      
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      
+      if (!tab.url.includes('web.whatsapp.com')) {
+        UIManager.showStatus('Please navigate to WhatsApp Web first', 'error');
+        return;
+      }
+
+      UIManager.showStatus('🔍 Scanning WhatsApp Web DOM structure...', 'info');
+      
+      // Send DOM scanning request to content script
+      const response = await chrome.tabs.sendMessage(tab.id, { action: "scanWhatsAppDOM" });
+      
+      if (response && response.success) {
+        console.log('DOM scan results:', response);
+        
+        // Display results in console and show summary
+        const summary = `
+          📊 DOM Scan Results:
+          • Total elements: ${response.totalElements}
+          • Elements with data-testid: ${response.testIdElements.length}
+          • Message-like elements: ${response.classElements.length}
+          • Text elements: ${response.textElements.length}
+          
+          🎯 Selector Tests:
+          ${Object.entries(response.selectorTests).map(([selector, data]) => 
+            `• ${selector}: ${data.count} elements`
+          ).join('\n')}
+        `;
+        
+        UIManager.showStatus('✅ DOM scan completed! Check console for details.', 'success');
+        console.log(summary);
+        
+        // Show detailed results
+        console.log('Detailed testId elements:', response.testIdElements);
+        console.log('Detailed class elements:', response.classElements);
+        console.log('Detailed text elements:', response.textElements);
+        console.log('Selector test results:', response.selectorTests);
+        
+      } else {
+        UIManager.showStatus('❌ DOM scan failed: ' + (response?.error || 'Unknown error'), 'error');
+        console.error('DOM scan failed:', response);
+      }
+      
+    } catch (error) {
+      console.error('Error testing DOM scanning:', error);
+      UIManager.showStatus('❌ Error scanning DOM: ' + error.message, 'error');
+    }
+  }
+
+  addTestButton() {
+    try {
+      // Check if test button already exists
+      if (document.getElementById('debug-test-button')) {
+        return;
+      }
+      
+      // Find a good place to add the test button (e.g., in the important tab)
+      const importantTab = document.getElementById('important-tab');
+      if (importantTab) {
+        const testButton = document.createElement('button');
+        testButton.id = 'debug-test-button';
+        testButton.textContent = '🔍 Test DOM Scan';
+        testButton.style.cssText = `
+          background: #4CAF50;
+          color: white;
+          border: none;
+          padding: 8px 16px;
+          border-radius: 4px;
+          margin: 10px;
+          cursor: pointer;
+          font-size: 12px;
+        `;
+        
+        testButton.addEventListener('click', () => {
+          this.testDOMScanning();
+        });
+        
+        importantTab.appendChild(testButton);
+        console.log('✅ Debug test button added');
+      }
+    } catch (error) {
+      console.error('Error adding test button:', error);
     }
   }
 
@@ -2355,11 +2713,17 @@ document.addEventListener('DOMContentLoaded', () => {
           console.log('MessageProcessor methods:', Object.getOwnPropertyNames(MessageProcessor));
           console.log('displayAllImportantMessages exists:', typeof MessageProcessor.displayAllImportantMessages);
           
-          if (typeof MessageProcessor.displayAllImportantMessages === 'function') {
-            await MessageProcessor.displayAllImportantMessages();
+          // Only auto-load if we haven't loaded recently
+          const now = Date.now();
+          if (now - MessageProcessor.lastDisplayTime > 2000) { // 2 second cooldown
+            if (typeof MessageProcessor.displayAllImportantMessages === 'function') {
+              await MessageProcessor.displayAllImportantMessages();
+            } else {
+              console.error('displayAllImportantMessages method not found on MessageProcessor');
+              UIManager.showStatus('Error: Method not found', 'error');
+            }
           } else {
-            console.error('displayAllImportantMessages method not found on MessageProcessor');
-            UIManager.showStatus('Error: Method not found', 'error');
+            console.log('Skipping auto-load due to recent activity');
           }
         } catch (error) {
           console.error('Error auto-loading important messages:', error);

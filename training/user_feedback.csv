@@ -1,0 +1,4 @@
+message_id,message_text,predicted_priority,user_rating,actual_priority,feedback_type,timestamp,context
+msg_001,URGENT: Payment due today!,P3,5,P3,validation,2025-09-04T12:27:28.991884,
+msg_002,"Good morning, how are you?",P1,4,P1,validation,2025-09-04T12:27:29.009090,
+msg_003,Can you review this document?,P1,2,P2,correction,2025-09-04T12:27:29.011467,

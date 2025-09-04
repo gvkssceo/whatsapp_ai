@@ -2,11 +2,12 @@
   "manifest_version": 3,
   "name": "Nax",
   "description": "Intelligent WhatsApp Web chat analysis with ML-powered message prioritization, summarization, and insights. Extract and analyze your conversations using local ML models.",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "permissions": [
     "scripting", 
     "activeTab", 
-    "storage"
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
     "https://web.whatsapp.com/*",
@@ -14,7 +15,8 @@
     "http://localhost:8000/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "action": {
     "default_popup": "popup.html",
@@ -29,8 +31,9 @@
   "content_scripts": [
     {
       "matches": ["https://web.whatsapp.com/*"],
-      "js": ["content.js"],
-      "run_at": "document_end"
+      "js": ["ultra_error_suppressor.js", "whatsapp_error_handler.js", "content_chat_scanner.js", "content.js"],
+      "run_at": "document_start",
+      "all_frames": false
     }
   ],
   "icons": {
@@ -41,7 +44,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["icon.png", "test_emoji.html", "test_enhanced_extraction.html", "nax.mp4", "test_chat_title.html"],
+      "resources": ["icon.png", "test_emoji.html", "test_enhanced_extraction.html", "nax.mp4", "test_chat_title.html", "test_chat_scanner.html", "data/messages.csv", "debug_fixes.js", "whatsapp_error_handler.js", "ultra_error_suppressor.js"],
       "matches": ["https://web.whatsapp.com/*"],
       "use_dynamic_url": true
     }
