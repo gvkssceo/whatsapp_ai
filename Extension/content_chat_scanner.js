@@ -172,19 +172,82 @@
       const chatName = this.extractChatName(chatElement);
       console.log('📱 Chat name for filtering:', chatName);
       
+      // First, try to get the full text content of the chat element
+      const fullText = chatElement.textContent || '';
+      console.log('📝 Full chat element text:', fullText.substring(0, 300));
+      
+      // Split into lines and find the message
+      const lines = fullText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+      console.log('📝 All text lines:', lines);
+      
+      // Look for the message line (usually the second or third meaningful line)
+      let messageLine = null;
+      let lineIndex = 0;
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        // Skip empty lines
+        if (!line || line.length < 2) continue;
+        
+        // Skip the chat name
+        if (chatName && line === chatName) {
+          console.log(`⏭️ Skipping chat name line: "${line}"`);
+          continue;
+        }
+        
+        // Skip timestamps (like "12:34", "12:34 PM")
+        if (line.match(/^\d{1,2}:\d{2}(\s*(am|pm|AM|PM))?$/)) {
+          console.log(`⏭️ Skipping timestamp: "${line}"`);
+          continue;
+        }
+        
+        // Skip status indicators
+        if (line.match(/^(online|last seen|typing|away)$/i)) {
+          console.log(`⏭️ Skipping status: "${line}"`);
+          continue;
+        }
+        
+        // Skip very short lines (likely UI elements)
+        if (line.length < 3) {
+          console.log(`⏭️ Skipping short line: "${line}"`);
+          continue;
+        }
+        
+        // Skip lines that are just numbers
+        if (line.match(/^\d+$/)) {
+          console.log(`⏭️ Skipping number line: "${line}"`);
+          continue;
+        }
+        
+        // This looks like a potential message
+        if (line.length >= 3 && /[a-zA-Z0-9]/.test(line)) {
+          messageLine = line;
+          lineIndex = i;
+          console.log(`✅ Found potential message at line ${i}: "${line}"`);
+          break;
+        }
+      }
+      
+      if (messageLine) {
+        const cleanMessage = this.cleanMessageText(messageLine);
+        if (cleanMessage) {
+          console.log(`✅ Final clean message: "${cleanMessage}"`);
+          return cleanMessage;
+        }
+      }
+      
+      // Fallback: Try specific selectors
       const messageSelectors = [
-        // Latest message selectors - more specific
         'span[title]:not(:first-child)',
         'div[title]:not(:first-child)', 
         'span[data-testid="last-msg"]',
         'div[data-testid="last-msg"]',
-        // Look for spans that are not the chat name
         'span:not([title])',
         'span:last-of-type',
         'div:last-of-type'
       ];
 
-      // First, try specific selectors
       for (const selector of messageSelectors) {
         const elements = chatElement.querySelectorAll(selector);
         
@@ -205,41 +268,16 @@
         }
       }
 
-      // Enhanced fallback - get all text content and filter more intelligently
-      const allText = chatElement.textContent || '';
-      console.log('📝 Full chat element text:', allText.substring(0, 200));
-      
-      const lines = allText.split('\n').map(line => line.trim()).filter(line => line.length > 3);
-      console.log('📝 All text lines:', lines);
-      
-      // Find the message line (usually not the first line which is the chat name)
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        
-        // Skip chat name, timestamps, and UI elements
-        if (chatName && line === chatName) continue;
-        if (line.match(/^\d{1,2}:\d{2}/)) continue; // timestamp
-        if (line.match(/^\d+$/)) continue; // just numbers
-        if (line.length < 10) continue; // too short
-        if (line.includes('last seen') || line.includes('online')) continue;
-        if (line.includes('typing')) continue;
-        
-        const cleanText = this.cleanMessageText(line);
-        if (cleanText && cleanText.length > 5) {
-          console.log('✅ Found message via text parsing:', cleanText.substring(0, 50));
-          return cleanText;
-        }
-      }
-
-      // Last resort - try to find any meaningful text that's not the chat name
+      // Last resort - scan all spans for meaningful content
       const allSpans = chatElement.querySelectorAll('span');
       for (const span of allSpans) {
         const text = span.textContent?.trim();
         if (text && 
-            text.length > 10 && 
+            text.length > 5 && 
             text.length < 500 &&
             (!chatName || text !== chatName) &&
-            !text.match(/^\d{1,2}:\d{2}/)) {
+            !text.match(/^\d{1,2}:\d{2}/) &&
+            /[a-zA-Z0-9]/.test(text)) {
           
           const cleanText = this.cleanMessageText(text);
           if (cleanText) {
@@ -265,35 +303,38 @@
         .replace(/\u200f/g, '') // Remove right-to-left mark
         .trim();
 
-      // Filter out UI elements and chat metadata
+      // Filter out UI elements and chat metadata - LESS AGGRESSIVE
       const uiPatterns = [
-        /^(typing|online|last seen|archived|muted|pinned).*$/i,
-        /^(draft:|you:|photo|video|audio|document|sticker).*$/i,
-        /^\d{1,2}:\d{2}.*$/i, // timestamps
-        /^[^\w\s]*$/,
+        /^(typing|online|last seen|archived|muted|pinned)$/i, // Only exact matches
+        /^(draft:|you:)$/i, // Only exact matches
+        /^\d{1,2}:\d{2}$/i, // Only exact timestamps
+        /^[^\w\s]*$/, // Only symbols
         /^(yesterday|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i,
-        /^(\d+\s*)?(unread|new).*$/i,
-        /^(call|missed call|incoming call|outgoing call).*$/i
+        /^(\d+\s*)?(unread|new)$/i, // Only exact matches
+        /^(call|missed call|incoming call|outgoing call)$/i // Only exact matches
       ];
 
       for (const pattern of uiPatterns) {
         if (pattern.test(cleaned)) {
+          console.log(`🗑️ Filtered UI pattern: "${cleaned}"`);
           return '';
         }
       }
 
-      // Additional cleaning for specific artifacts
+      // Additional cleaning for specific artifacts - LESS AGGRESSIVE
       cleaned = cleaned
         .replace(/^(‪|‬)/g, '') // Remove text direction marks
         .replace(/^\W+/, '') // Remove leading non-word characters
         .replace(/\W+$/, '') // Remove trailing non-word characters
         .trim();
 
-      // Must have some actual content
-      if (cleaned.length < 5 || !/[a-zA-Z0-9]/.test(cleaned)) {
+      // Must have some actual content - LESS RESTRICTIVE
+      if (cleaned.length < 2 || !/[a-zA-Z0-9]/.test(cleaned)) {
+        console.log(`🗑️ Too short or no alphanumeric: "${cleaned}"`);
         return '';
       }
 
+      console.log(`✅ Cleaned message: "${cleaned}"`);
       return cleaned;
     }
 
