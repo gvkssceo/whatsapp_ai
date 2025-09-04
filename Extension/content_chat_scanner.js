@@ -172,118 +172,154 @@
       const chatName = this.extractChatName(chatElement);
       console.log('📱 Chat name for filtering:', chatName);
       
-      // First, try to get the full text content of the chat element
-      const fullText = chatElement.textContent || '';
-      console.log('📝 Full chat element text:', fullText.substring(0, 300));
-      
-      // Split into lines and find the message
-      const lines = fullText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-      console.log('📝 All text lines:', lines);
-      
-      // Look for the message line (usually the second or third meaningful line)
-      let messageLine = null;
-      let lineIndex = 0;
-      
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        
-        // Skip empty lines
-        if (!line || line.length < 2) continue;
-        
-        // Skip the chat name
-        if (chatName && line === chatName) {
-          console.log(`⏭️ Skipping chat name line: "${line}"`);
-          continue;
-        }
-        
-        // Skip timestamps (like "12:34", "12:34 PM")
-        if (line.match(/^\d{1,2}:\d{2}(\s*(am|pm|AM|PM))?$/)) {
-          console.log(`⏭️ Skipping timestamp: "${line}"`);
-          continue;
-        }
-        
-        // Skip status indicators
-        if (line.match(/^(online|last seen|typing|away)$/i)) {
-          console.log(`⏭️ Skipping status: "${line}"`);
-          continue;
-        }
-        
-        // Skip very short lines (likely UI elements)
-        if (line.length < 3) {
-          console.log(`⏭️ Skipping short line: "${line}"`);
-          continue;
-        }
-        
-        // Skip lines that are just numbers
-        if (line.match(/^\d+$/)) {
-          console.log(`⏭️ Skipping number line: "${line}"`);
-          continue;
-        }
-        
-        // This looks like a potential message
-        if (line.length >= 3 && /[a-zA-Z0-9]/.test(line)) {
-          messageLine = line;
-          lineIndex = i;
-          console.log(`✅ Found potential message at line ${i}: "${line}"`);
-          break;
-        }
-      }
-      
-      if (messageLine) {
-        const cleanMessage = this.cleanMessageText(messageLine);
-        if (cleanMessage) {
-          console.log(`✅ Final clean message: "${cleanMessage}"`);
-          return cleanMessage;
-        }
-      }
-      
-      // Fallback: Try specific selectors
+      // Strategy 1: Look for message-specific elements
       const messageSelectors = [
-        'span[title]:not(:first-child)',
-        'div[title]:not(:first-child)', 
-        'span[data-testid="last-msg"]',
+        // WhatsApp's specific message containers
         'div[data-testid="last-msg"]',
-        'span:not([title])',
-        'span:last-of-type',
-        'div:last-of-type'
+        'span[data-testid="last-msg"]',
+        'div[title]:not([title*=":"])', // divs with title but not timestamps
+        'span[title]:not([title*=":"])', // spans with title but not timestamps
+        
+        // Look for elements that contain message text
+        'div[dir="ltr"]',
+        'span[dir="ltr"]',
+        'div[dir="auto"]:not(:first-child)',
+        'span[dir="auto"]:not(:first-child)',
+        
+        // Look for elements with specific classes that contain messages
+        'div[class*="message"]',
+        'span[class*="message"]',
+        'div[class*="text"]',
+        'span[class*="text"]',
+        
+        // Look for elements that are not the first child (likely not the chat name)
+        'div:not(:first-child)',
+        'span:not(:first-child)'
       ];
 
       for (const selector of messageSelectors) {
         const elements = chatElement.querySelectorAll(selector);
         
         for (const element of elements) {
-          const text = element.title || element.textContent;
-          if (text && text.trim() && text.length > 3) {
-            // Skip if it's the chat name
-            if (chatName && text.trim() === chatName.trim()) {
-              continue;
-            }
-            
-            const cleanText = this.cleanMessageText(text.trim());
-            if (cleanText && cleanText.length > 3) {
-              console.log('✅ Found message via selector:', cleanText.substring(0, 50));
-              return cleanText;
-            }
+          // Skip if this element contains the chat name
+          if (chatName && element.textContent?.includes(chatName)) {
+            continue;
+          }
+          
+          // Get text from title attribute first (often contains the actual message)
+          let text = element.title || element.textContent;
+          if (!text) continue;
+          
+          text = text.trim();
+          if (text.length < 3) continue;
+          
+          // Skip if it's just the chat name
+          if (chatName && text === chatName) {
+            continue;
+          }
+          
+          // Skip timestamps
+          if (text.match(/^\d{1,2}:\d{2}(\s*(am|pm|AM|PM))?$/)) {
+            continue;
+          }
+          
+          // Skip status indicators
+          if (text.match(/^(online|last seen|typing|away|yesterday|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i)) {
+            continue;
+          }
+          
+          // Skip very short or purely numeric text
+          if (text.length < 3 || text.match(/^\d+$/)) {
+            continue;
+          }
+          
+          // Skip UI artifacts
+          if (text.match(/^(default-|refreshed|status-|image-|pin-|voice-|disappearing-|call-)/)) {
+            continue;
+          }
+          
+          // This looks like a real message
+          const cleanText = this.cleanMessageText(text);
+          if (cleanText && cleanText.length > 3) {
+            console.log('✅ Found message via selector:', cleanText.substring(0, 50));
+            return cleanText;
           }
         }
       }
 
-      // Last resort - scan all spans for meaningful content
-      const allSpans = chatElement.querySelectorAll('span');
-      for (const span of allSpans) {
-        const text = span.textContent?.trim();
-        if (text && 
-            text.length > 5 && 
-            text.length < 500 &&
-            (!chatName || text !== chatName) &&
-            !text.match(/^\d{1,2}:\d{2}/) &&
-            /[a-zA-Z0-9]/.test(text)) {
-          
-          const cleanText = this.cleanMessageText(text);
-          if (cleanText) {
-            console.log('✅ Found message via span scanning:', cleanText.substring(0, 50));
-            return cleanText;
-          }
+      // Strategy 2: Parse the DOM structure more carefully
+      const allTextElements = chatElement.querySelectorAll('span, div');
+      const potentialMessages = [];
+      
+      for (const element of allTextElements) {
+        const text = element.textContent?.trim();
+        if (!text || text.length < 3) continue;
+        
+        // Skip if it's the chat name
+        if (chatName && text === chatName) continue;
+        
+        // Skip timestamps and status
+        if (text.match(/^\d{1,2}:\d{2}/) || 
+            text.match(/^(online|last seen|typing|away|yesterday|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i)) {
+          continue;
+        }
+        
+        // Skip UI artifacts
+        if (text.match(/^(default-|refreshed|status-|image-|pin-|voice-|disappearing-|call-)/)) {
+          continue;
+        }
+        
+        // Skip very short or purely numeric
+        if (text.length < 3 || text.match(/^\d+$/)) continue;
+        
+        // Must contain some alphanumeric content
+        if (!/[a-zA-Z0-9]/.test(text)) continue;
+        
+        potentialMessages.push(text);
+      }
+      
+      // Sort by length (longer text is more likely to be a message)
+      potentialMessages.sort((a, b) => b.length - a.length);
+      
+      for (const text of potentialMessages) {
+        const cleanText = this.cleanMessageText(text);
+        if (cleanText && cleanText.length > 3) {
+          console.log('✅ Found message via text analysis:', cleanText.substring(0, 50));
+          return cleanText;
+        }
+      }
+
+      // Strategy 3: Look for specific patterns in the full text
+      const fullText = chatElement.textContent || '';
+      const lines = fullText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+      
+      for (let i = lines.length - 1; i >= 0; i--) { // Start from the end
+        const line = lines[i];
+        
+        // Skip the chat name
+        if (chatName && line === chatName) continue;
+        
+        // Skip timestamps and status
+        if (line.match(/^\d{1,2}:\d{2}/) || 
+            line.match(/^(online|last seen|typing|away|yesterday|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i)) {
+          continue;
+        }
+        
+        // Skip UI artifacts
+        if (line.match(/^(default-|refreshed|status-|image-|pin-|voice-|disappearing-|call-)/)) {
+          continue;
+        }
+        
+        // Skip very short or purely numeric
+        if (line.length < 3 || line.match(/^\d+$/)) continue;
+        
+        // Must contain some alphanumeric content
+        if (!/[a-zA-Z0-9]/.test(line)) continue;
+        
+        const cleanText = this.cleanMessageText(line);
+        if (cleanText && cleanText.length > 3) {
+          console.log('✅ Found message via line analysis:', cleanText.substring(0, 50));
+          return cleanText;
         }
       }
 
@@ -303,7 +339,7 @@
         .replace(/\u200f/g, '') // Remove right-to-left mark
         .trim();
 
-      // Filter out UI elements and chat metadata - LESS AGGRESSIVE
+      // Filter out UI elements and chat metadata - MORE AGGRESSIVE
       const uiPatterns = [
         /^(typing|online|last seen|archived|muted|pinned)$/i, // Only exact matches
         /^(draft:|you:)$/i, // Only exact matches
@@ -311,7 +347,16 @@
         /^[^\w\s]*$/, // Only symbols
         /^(yesterday|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i,
         /^(\d+\s*)?(unread|new)$/i, // Only exact matches
-        /^(call|missed call|incoming call|outgoing call)$/i // Only exact matches
+        /^(call|missed call|incoming call|outgoing call)$/i, // Only exact matches
+        /^(default-|refreshed|status-|image-|pin-|voice-|disappearing-|call-)/i, // UI artifacts
+        /^(you deleted this message|you recalled|message deleted)$/i, // WhatsApp system messages
+        /^(photo|image|video|audio|document|location|contact|sticker)$/i, // Media indicators
+        /^(sent|delivered|read|pending)$/i, // Message status
+        /^[^\w\s]*$/, // Only symbols and punctuation
+        /^\d+$/, // Only numbers
+        /^[a-zA-Z]+(\([^)]+\))?$/, // Single words with optional parentheses (like "Harsha(You)")
+        /^[a-zA-Z]+\s+\d+\/\d+\/\d+$/, // Name with date pattern
+        /^[a-zA-Z]+\s+\d{1,2}:\d{2}/, // Name with time pattern
       ];
 
       for (const pattern of uiPatterns) {
@@ -321,16 +366,25 @@
         }
       }
 
-      // Additional cleaning for specific artifacts - LESS AGGRESSIVE
+      // Additional cleaning for specific artifacts - MORE AGGRESSIVE
       cleaned = cleaned
         .replace(/^(‪|‬)/g, '') // Remove text direction marks
         .replace(/^\W+/, '') // Remove leading non-word characters
         .replace(/\W+$/, '') // Remove trailing non-word characters
+        .replace(/^(you|i|me|he|she|they|we|it)\s*:/i, '') // Remove sender prefixes
+        .replace(/^[a-zA-Z]+\s*\([^)]+\)\s*/, '') // Remove name with status like "Harsha(You)"
         .trim();
 
-      // Must have some actual content - LESS RESTRICTIVE
-      if (cleaned.length < 2 || !/[a-zA-Z0-9]/.test(cleaned)) {
+      // Must have some actual content - MORE RESTRICTIVE
+      if (cleaned.length < 5 || !/[a-zA-Z0-9]/.test(cleaned)) {
         console.log(`🗑️ Too short or no alphanumeric: "${cleaned}"`);
+        return '';
+      }
+
+      // Must not be just a single word (likely a name or status)
+      const words = cleaned.split(/\s+/);
+      if (words.length < 2) {
+        console.log(`🗑️ Single word likely not a message: "${cleaned}"`);
         return '';
       }
 

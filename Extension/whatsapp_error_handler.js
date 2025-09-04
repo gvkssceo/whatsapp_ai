@@ -10,7 +10,12 @@
     const errorMessage = args.join(' ').toLowerCase();
     if (errorMessage.includes('converting to a string will drop content data') ||
         errorMessage.includes('errorutils caught an error') ||
-        errorMessage.includes('hash="undefined"')) {
+        errorMessage.includes('hash="undefined"') ||
+        errorMessage.includes('websocket connection failed') ||
+        errorMessage.includes('failed to load resource') ||
+        errorMessage.includes('event handler must be added') ||
+        errorMessage.includes('violation \'message\' handler took') ||
+        errorMessage.includes('listener indicated an asynchronous response')) {
       console.log('🔇 IMMEDIATE suppressed:', args[0]?.substring?.(0, 80) || args[0]);
       return;
     }
@@ -43,7 +48,12 @@
           'errorutils caught an error',
           'subsequent non-fatal errors won\'t be logged',
           'fburl.com/debugjs',
-          'could not establish connection. receiving end does not exist'
+          'could not establish connection. receiving end does not exist',
+          'websocket connection to \'wss://web.whatsapp.com/ws/chat\' failed',
+          'failed to load resource: net::err_name_not_resolved',
+          'event handler of \'x-storagemutated-1\' event must be added',
+          'violation \'message\' handler took',
+          'listener indicated an asynchronous response by returning true, but the message channel closed'
         ];
         
         if (knownErrors.some(pattern => errorMessage.includes(pattern))) {
@@ -64,7 +74,11 @@
         const knownWarnings = [
           'errorutils caught an error',
           'converting to a string will drop content data',
-          'subsequent non-fatal errors won\'t be logged'
+          'subsequent non-fatal errors won\'t be logged',
+          'websocket connection failed',
+          'failed to load resource',
+          'event handler must be added',
+          'violation \'message\' handler took'
         ];
         
         if (knownWarnings.some(pattern => warnMessage.includes(pattern))) {
@@ -85,7 +99,9 @@
               const errorStr = error?.toString?.() || error?.message || '';
               if (errorStr.includes('Converting to a string will drop content data') ||
                   errorStr.includes('Hash="undefined"') ||
-                  errorStr.includes('Translation=')) {
+                  errorStr.includes('Translation=') ||
+                  errorStr.includes('WebSocket connection failed') ||
+                  errorStr.includes('Failed to load resource')) {
                 console.log('🔇 Suppressed ErrorUtils.reportError:', errorStr.substring(0, 100));
                 return; // Don't call the original function
               }
@@ -103,7 +119,9 @@
             const errorMsg = event.error?.message || event.message || '';
             if (errorMsg.includes('Converting to a string will drop content data') ||
                 errorMsg.includes('Hash="undefined"') ||
-                errorMsg.includes('Translation=')) {
+                errorMsg.includes('Translation=') ||
+                errorMsg.includes('WebSocket connection failed') ||
+                errorMsg.includes('Failed to load resource')) {
               console.log('🔇 Suppressed window error:', errorMsg.substring(0, 100));
               event.preventDefault();
               event.stopPropagation();
@@ -130,7 +148,9 @@
           const originalErrorListener = window.errorListener;
           window.errorListener = function(...args) {
             const errorStr = args.join(' ');
-            if (errorStr.includes('Converting to a string will drop content data')) {
+            if (errorStr.includes('Converting to a string will drop content data') ||
+                errorStr.includes('WebSocket connection failed') ||
+                errorStr.includes('Failed to load resource')) {
               console.log('🔇 Suppressed errorListener call');
               return;
             }
@@ -286,7 +306,9 @@
       window.addEventListener('unhandledrejection', (event) => {
         const reason = event.reason?.toString?.() || event.reason;
         if (reason && (reason.includes('Converting to a string will drop content data') ||
-                      reason.includes('Hash="undefined"'))) {
+                      reason.includes('Hash="undefined"') ||
+                      reason.includes('WebSocket connection failed') ||
+                      reason.includes('Failed to load resource'))) {
           console.log('🔇 Suppressed unhandled rejection:', reason.substring(0, 100));
           event.preventDefault();
         }
@@ -300,7 +322,9 @@
           const filterLog = function(...args) {
             const logMessage = args.join(' ').toLowerCase();
             if (logMessage.includes('errorutils caught an error') ||
-                logMessage.includes('converting to a string will drop content data')) {
+                logMessage.includes('converting to a string will drop content data') ||
+                logMessage.includes('websocket connection failed') ||
+                logMessage.includes('failed to load resource')) {
               return; // Don't log these at all
             }
             return superOriginalLog.apply(console, args);
@@ -333,7 +357,11 @@
       // Handle other known patterns
       if (errorMessage.includes('Hash="undefined"') || 
           errorMessage.includes('Translation=') ||
-          errorMessage.includes('Content="{"key":null')) {
+          errorMessage.includes('Content="{"key":null') ||
+          errorMessage.includes('WebSocket connection failed') ||
+          errorMessage.includes('Failed to load resource') ||
+          errorMessage.includes('Event handler must be added') ||
+          errorMessage.includes('Violation \'message\' handler took')) {
         console.log('🔇 Suppressed WhatsApp content rendering error');
         return true; // Handled
       }
