@@ -218,6 +218,24 @@
             continue;
           }
           
+          // Skip if the text is exactly the same as chat name (case insensitive)
+          if (chatName && text.toLowerCase() === chatName.toLowerCase()) {
+            continue;
+          }
+          
+          // Skip if text starts with chat name (likely a UI element)
+          if (chatName && text.toLowerCase().startsWith(chatName.toLowerCase())) {
+            continue;
+          }
+          
+          // Skip if text contains chat name as a word (likely not a real message)
+          if (chatName && text.toLowerCase().includes(chatName.toLowerCase())) {
+            const words = text.toLowerCase().split(/\s+/);
+            if (words.includes(chatName.toLowerCase())) {
+              continue;
+            }
+          }
+          
           // Skip timestamps
           if (text.match(/^\d{1,2}:\d{2}(\s*(am|pm|AM|PM))?$/)) {
             continue;
@@ -233,17 +251,23 @@
             continue;
           }
           
-          // Skip UI artifacts
-          if (text.match(/^(default-|refreshed|status-|image-|pin-|voice-|disappearing-|call-)/)) {
-            continue;
-          }
-          
-          // This looks like a real message
-          const cleanText = this.cleanMessageText(text);
-          if (cleanText && cleanText.length > 3) {
-            console.log('✅ Found message via selector:', cleanText.substring(0, 50));
-            return cleanText;
-          }
+                     // Skip UI artifacts
+           if (text.match(/^(default-|refreshed|status-|image-|pin-|voice-|disappearing-|call-)/)) {
+             continue;
+           }
+           
+           // Check if this contains actual message content (not just UI artifacts)
+           const hasRealContent = text.match(/[a-zA-Z]{3,}/) && text.length > 10;
+           if (!hasRealContent) {
+             continue;
+           }
+           
+           // This looks like a real message
+           const cleanText = this.cleanMessageText(text);
+           if (cleanText && cleanText.length > 3) {
+             console.log('✅ Found message via selector:', cleanText.substring(0, 50));
+             return cleanText;
+           }
         }
       }
 
@@ -255,8 +279,14 @@
         const text = element.textContent?.trim();
         if (!text || text.length < 3) continue;
         
-        // Skip if it's the chat name
-        if (chatName && text === chatName) continue;
+                 // Skip if it's the chat name
+         if (chatName && text === chatName) continue;
+         
+         // Skip if text is exactly the same as chat name (case insensitive)
+         if (chatName && text.toLowerCase() === chatName.toLowerCase()) continue;
+         
+         // Skip if text starts with chat name (likely a UI element)
+         if (chatName && text.toLowerCase().startsWith(chatName.toLowerCase())) continue;
         
         // Skip timestamps and status
         if (text.match(/^\d{1,2}:\d{2}/) || 
@@ -264,18 +294,24 @@
           continue;
         }
         
-        // Skip UI artifacts
-        if (text.match(/^(default-|refreshed|status-|image-|pin-|voice-|disappearing-|call-)/)) {
-          continue;
-        }
-        
-        // Skip very short or purely numeric
-        if (text.length < 3 || text.match(/^\d+$/)) continue;
-        
-        // Must contain some alphanumeric content
-        if (!/[a-zA-Z0-9]/.test(text)) continue;
-        
-        potentialMessages.push(text);
+                 // Skip UI artifacts
+         if (text.match(/^(default-|refreshed|status-|image-|pin-|voice-|disappearing-|call-)/)) {
+           continue;
+         }
+         
+         // Skip very short or purely numeric
+         if (text.length < 3 || text.match(/^\d+$/)) continue;
+         
+         // Must contain some alphanumeric content
+         if (!/[a-zA-Z0-9]/.test(text)) continue;
+         
+         // Check if this contains actual message content (not just UI artifacts)
+         const hasRealContent = text.match(/[a-zA-Z]{3,}/) && text.length > 10;
+         if (!hasRealContent) {
+           continue;
+         }
+         
+         potentialMessages.push(text);
       }
       
       // Sort by length (longer text is more likely to be a message)
@@ -296,8 +332,14 @@
       for (let i = lines.length - 1; i >= 0; i--) { // Start from the end
         const line = lines[i];
         
-        // Skip the chat name
-        if (chatName && line === chatName) continue;
+                 // Skip the chat name
+         if (chatName && line === chatName) continue;
+         
+         // Skip if line is exactly the same as chat name (case insensitive)
+         if (chatName && line.toLowerCase() === chatName.toLowerCase()) continue;
+         
+         // Skip if line starts with chat name (likely a UI element)
+         if (chatName && line.toLowerCase().startsWith(chatName.toLowerCase())) continue;
         
         // Skip timestamps and status
         if (line.match(/^\d{1,2}:\d{2}/) || 
@@ -305,22 +347,28 @@
           continue;
         }
         
-        // Skip UI artifacts
-        if (line.match(/^(default-|refreshed|status-|image-|pin-|voice-|disappearing-|call-)/)) {
-          continue;
-        }
-        
-        // Skip very short or purely numeric
-        if (line.length < 3 || line.match(/^\d+$/)) continue;
-        
-        // Must contain some alphanumeric content
-        if (!/[a-zA-Z0-9]/.test(line)) continue;
-        
-        const cleanText = this.cleanMessageText(line);
-        if (cleanText && cleanText.length > 3) {
-          console.log('✅ Found message via line analysis:', cleanText.substring(0, 50));
-          return cleanText;
-        }
+                 // Skip UI artifacts
+         if (line.match(/^(default-|refreshed|status-|image-|pin-|voice-|disappearing-|call-)/)) {
+           continue;
+         }
+         
+         // Skip very short or purely numeric
+         if (line.length < 3 || line.match(/^\d+$/)) continue;
+         
+         // Must contain some alphanumeric content
+         if (!/[a-zA-Z0-9]/.test(line)) continue;
+         
+         // Check if this contains actual message content (not just UI artifacts)
+         const hasRealContent = line.match(/[a-zA-Z]{3,}/) && line.length > 10;
+         if (!hasRealContent) {
+           continue;
+         }
+         
+         const cleanText = this.cleanMessageText(line);
+         if (cleanText && cleanText.length > 3) {
+           console.log('✅ Found message via line analysis:', cleanText.substring(0, 50));
+           return cleanText;
+         }
       }
 
       console.log('❌ No message found in chat element');
@@ -366,14 +414,46 @@
         }
       }
 
-      // Additional cleaning for specific artifacts - MORE AGGRESSIVE
-      cleaned = cleaned
-        .replace(/^(‪|‬)/g, '') // Remove text direction marks
-        .replace(/^\W+/, '') // Remove leading non-word characters
-        .replace(/\W+$/, '') // Remove trailing non-word characters
-        .replace(/^(you|i|me|he|she|they|we|it)\s*:/i, '') // Remove sender prefixes
-        .replace(/^[a-zA-Z]+\s*\([^)]+\)\s*/, '') // Remove name with status like "Harsha(You)"
-        .trim();
+             // Additional cleaning for specific artifacts - MORE AGGRESSIVE
+       cleaned = cleaned
+         .replace(/^(‪|‬)/g, '') // Remove text direction marks
+         .replace(/^\W+/, '') // Remove leading non-word characters
+         .replace(/\W+$/, '') // Remove trailing non-word characters
+         .replace(/^(you|i|me|he|she|they|we|it)\s*:/i, '') // Remove sender prefixes
+         .replace(/^[a-zA-Z]+\s*\([^)]+\)\s*/, '') // Remove name with status like "Harsha(You)"
+         .trim();
+
+       // Remove common UI artifacts that appear in the middle of messages
+       cleaned = cleaned
+         .replace(/\s*status-dblcheck\s*/g, ' ') // Remove status indicators
+         .replace(/\s*mute-notifications-refreshed\s*/g, ' ') // Remove notification artifacts
+         .replace(/\s*image-refreshed\s*/g, ' ') // Remove image artifacts
+         .replace(/\s*pin-refreshed-thin\s*/g, ' ') // Remove pin artifacts
+         .replace(/\s*disappearing-messages-refreshed\s*/g, ' ') // Remove disappearing messages
+         .replace(/\s*default-contact-refreshed\s*/g, ' ') // Remove contact artifacts
+         .replace(/\s*default-group-refreshed\s*/g, ' ') // Remove group artifacts
+         .replace(/\s*voice-call-outgoing-filled\s*/g, ' ') // Remove call artifacts
+         .replace(/\s*‪😌‬\s*/g, ' ') // Remove emoji artifacts
+         .replace(/\s*\d{1,2}:\d{2}\s*(am|pm|AM|PM)?\s*/g, ' ') // Remove timestamps
+         .replace(/\s*\d{1,2}\/\d{1,2}\/\d{4}\s*/g, ' ') // Remove dates
+         .replace(/\s*https?:\/\/[^\s]+\s*/g, ' ') // Remove URLs
+         .replace(/\s*[a-zA-Z]+@[a-zA-Z]+\.[a-zA-Z]+\s*/g, ' ') // Remove email addresses
+         .trim();
+
+       // Check if the cleaned text is just a chat name or similar pattern
+       const chatNamePatterns = [
+         /^[a-zA-Z\s&\/]+$/i, // Just letters, spaces, &, / (like "IT & Software Jobs 679")
+         /^[a-zA-Z\s]+$/i, // Just letters and spaces
+         /^[a-zA-Z\s]+[0-9]+$/i, // Letters and spaces followed by numbers
+         /^[a-zA-Z\s]+[0-9]+\s*[a-zA-Z\s]*$/i, // Letters, numbers, and more letters
+       ];
+       
+       for (const pattern of chatNamePatterns) {
+         if (pattern.test(cleaned) && cleaned.length < 50) {
+           console.log(`🗑️ Filtered chat name pattern: "${cleaned}"`);
+           return '';
+         }
+       }
 
       // Must have some actual content - MORE RESTRICTIVE
       if (cleaned.length < 5 || !/[a-zA-Z0-9]/.test(cleaned)) {
