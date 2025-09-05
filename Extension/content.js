@@ -1211,7 +1211,7 @@
             for (const element of elements) {
               if (element && element.textContent && element.textContent.trim()) {
                 const title = element.textContent.trim();
-                if (title && title !== 'WhatsApp' && title.length > 1) {
+                if (this.isValidChatTitle(title)) {
                   console.log('Found selected chat title:', title);
                   return title;
                 }
@@ -1239,7 +1239,7 @@
               const titleElement = chat.querySelector('[data-testid="conversation-title"], span[title], ._ao3e, h3, h2');
               if (titleElement && titleElement.textContent.trim()) {
                 const title = titleElement.textContent.trim();
-                if (title && title !== 'WhatsApp' && title.length > 1) {
+                if (this.isValidChatTitle(title)) {
                   console.log('Found highlighted chat title by CSS:', title);
                   return title;
                 }
@@ -1271,10 +1271,9 @@
           '[data-testid="chat-header"] [data-testid="conversation-title"]',
           '[data-testid="chat-header"] span',
           
-          // Alternative header selectors
+          // Alternative header selectors (excluding WhatsApp logo elements)
           'header [data-testid="conversation-title"]',
           'header span[title]',
-          'header h1',
           'header h2',
           'header h3',
           
@@ -1290,7 +1289,7 @@
             const element = document.querySelector(selector);
             if (element && element.textContent && element.textContent.trim()) {
               const title = element.textContent.trim();
-              if (title && title !== 'WhatsApp' && title.length > 1) {
+              if (this.isValidChatTitle(title)) {
                 console.log('Found header title with selector', selector, ':', title);
                 return title;
               }
@@ -1303,26 +1302,67 @@
         // Try to find any text in the header area that looks like a chat title
         const headerArea = document.querySelector('header, [data-testid="conversation-info-header"], .conversation-header, .chat-header');
         if (headerArea) {
-          const textElements = headerArea.querySelectorAll('span, h1, h2, h3, div');
+          // First, try to find the most specific title elements
+          const specificTitleSelectors = [
+            '[data-testid="conversation-title"]',
+            '[data-testid="chat-title"]',
+            '[data-testid="title"]',
+            '.conversation-title',
+            '.chat-title',
+            '.header-title'
+          ];
+          
+          for (const selector of specificTitleSelectors) {
+            const element = headerArea.querySelector(selector);
+            if (element && element.textContent && element.textContent.trim()) {
+              const text = element.textContent.trim();
+              if (this.isValidChatTitle(text)) {
+                console.log('Found specific header title with selector', selector, ':', text);
+                return text;
+              }
+            }
+          }
+          
+          // If no specific title found, look for general text elements but be more selective
+          const textElements = headerArea.querySelectorAll('span, h2, h3, div');
+          const candidates = [];
+          
           for (const element of textElements) {
             if (element && element.textContent && element.textContent.trim()) {
               const text = element.textContent.trim();
-              if (text && text !== 'WhatsApp' && text.length > 1 && text.length < 100) {
-                // Check if this looks like a chat title (not a button, status, etc.)
+              if (this.isValidChatTitle(text)) {
+                // Additional checks for chat title likelihood
                 const isLikelyTitle = !text.includes('•') && 
                                     !text.includes('online') && 
                                     !text.includes('last seen') &&
                                     !text.includes('typing') &&
                                     !text.includes('recording') &&
                                     !text.includes('📷') &&
-                                    !text.includes('🎤');
+                                    !text.includes('🎤') &&
+                                    !text.includes('unread') &&
+                                    !text.includes('read') &&
+                                    text.length > 3 && // Must be longer than 3 characters
+                                    text.split(' ').length <= 10; // Not too many words
                 
                 if (isLikelyTitle) {
-                  console.log('Found likely header title:', text);
-                  return text;
+                  candidates.push({ text, element });
                 }
               }
             }
+          }
+          
+          // If we have candidates, prefer the one that looks most like a chat title
+          if (candidates.length > 0) {
+            // Sort by likelihood (longer text with reasonable word count)
+            candidates.sort((a, b) => {
+              const aScore = a.text.length + (a.text.split(' ').length * 2);
+              const bScore = b.text.length + (b.text.split(' ').length * 2);
+              return bScore - aScore;
+            });
+            
+            const bestCandidate = candidates[0];
+            console.log('Found best header title candidate:', bestCandidate.text);
+            return bestCandidate.text;
           }
         }
         
@@ -1444,6 +1484,61 @@
       }
     }
     
+    // Extract title from chat scanner as fallback
+    extractTitleFromChatScanner() {
+      try {
+        console.log('🔍 Looking for title from chat scanner...');
+        
+        // Use the chat scanner if available
+        if (window.whatsappChatScanner && window.whatsappChatScanner.isReady) {
+          const chatScannerResult = window.whatsappChatScanner.getAllChatsWithLatestMessages();
+          
+          if (chatScannerResult.success && chatScannerResult.chats.length > 0) {
+            // Try to find the currently active chat by looking for visual indicators
+            const allChats = document.querySelectorAll('[data-testid="cell-frame-container"], div[role="listitem"]');
+            
+            for (const chatElement of allChats) {
+              try {
+                // Check if this chat appears to be selected/highlighted
+                const computedStyle = window.getComputedStyle(chatElement);
+                const backgroundColor = computedStyle.backgroundColor;
+                
+                if (backgroundColor !== 'rgba(0, 0, 0, 0)' && 
+                    backgroundColor !== 'transparent' &&
+                    backgroundColor !== 'rgb(255, 255, 255)' &&
+                    backgroundColor !== '#ffffff') {
+                  
+                  // This might be the active chat, try to get its title
+                  const titleElement = chatElement.querySelector('[data-testid="conversation-title"], span[title], ._ao3e, h3, h2');
+                  if (titleElement && titleElement.textContent.trim()) {
+                    const title = titleElement.textContent.trim();
+                    if (this.isValidChatTitle(title)) {
+                      console.log('Found active chat title from scanner:', title);
+                      return title;
+                    }
+                  }
+                }
+              } catch (e) {
+                // Skip this element
+              }
+            }
+            
+            // If no highlighted chat found, return the first chat name as fallback
+            const firstChat = chatScannerResult.chats[0];
+            if (firstChat && firstChat.name && this.isValidChatTitle(firstChat.name)) {
+              console.log('Using first chat from scanner as fallback:', firstChat.name);
+              return firstChat.name;
+            }
+          }
+        }
+        
+        return null;
+      } catch (error) {
+        console.error('Error extracting title from chat scanner:', error);
+        return null;
+      }
+    }
+    
     // Comprehensive chat title extraction with multiple fallbacks
     async extractChatTitleComprehensive() {
       try {
@@ -1456,6 +1551,7 @@
         const methods = [
           () => this.findActiveChatTitle(),
           () => this.findHeaderTitle(),
+          () => this.extractTitleFromChatScanner(),
           () => this.extractTitleFromURL(),
           () => this.extractTitleFromPageTitle(),
           () => this.findMessageBasedTitle(),
@@ -1467,7 +1563,7 @@
           try {
             console.log(`Trying method ${i + 1}...`);
             const title = methods[i]();
-            if (title && title !== 'WhatsApp' && title.length > 1) {
+            if (this.isValidChatTitle(title)) {
               console.log(`✅ Method ${i + 1} succeeded:`, title);
               return title;
             }
@@ -2616,6 +2712,27 @@
     // Get available chats for navigation
     getAvailableChats() {
       try {
+        // Use the chat scanner if available
+        if (window.whatsappChatScanner && window.whatsappChatScanner.isReady) {
+          console.log('🔍 Using chat scanner to get available chats...');
+          const chatScannerResult = window.whatsappChatScanner.getAllChatsWithLatestMessages();
+          
+          if (chatScannerResult.success && chatScannerResult.chats.length > 0) {
+            console.log(`✅ Chat scanner found ${chatScannerResult.chats.length} chats`);
+            return chatScannerResult.chats.map((chat, index) => ({
+              index: index,
+              title: chat.name,
+              message: chat.message,
+              timestamp: chat.timestamp
+            }));
+          } else {
+            console.log('⚠️ Chat scanner found no chats, falling back to manual extraction');
+          }
+        } else {
+          console.log('⚠️ Chat scanner not available, using manual extraction');
+        }
+
+        // Fallback to manual extraction
         const chatItems = this.getAllChatItems();
         const availableChats = [];
         
@@ -2729,6 +2846,8 @@
         'web.whatsapp.com',
         'wa-wordmark',
         'wa-wordmark-refreshed',
+        'wordmark',
+        'refreshed',
         'Chat',
         'Messages',
         'Status',
@@ -2738,7 +2857,56 @@
         'Menu',
         'Settings',
         'Help',
-        'About'
+        'About',
+        'New chat',
+        'New message',
+        'Compose',
+        'Archive',
+        'Starred',
+        'Broadcast',
+        'Group info',
+        'Contact info',
+        'newsletter',
+        'outline',
+        'newsletter-outline',
+        'icon',
+        'button',
+        'menu',
+        'dropdown',
+        'tooltip',
+        'notification',
+        'badge',
+        'indicator',
+        'status',
+        'online',
+        'offline',
+        'typing',
+        'recording',
+        'mute',
+        'unmute',
+        'pin',
+        'unpin',
+        'delete',
+        'edit',
+        'reply',
+        'forward',
+        'copy',
+        'paste',
+        'share',
+        'download',
+        'upload',
+        'attach',
+        'send',
+        'emoji',
+        'sticker',
+        'gif',
+        'voice',
+        'video',
+        'image',
+        'document',
+        'location',
+        'contact',
+        'poll'
       ];
       
       for (const systemText of systemTexts) {
@@ -2755,6 +2923,25 @@
       // Must not be just numbers or special characters
       if (/^[0-9\s\-_\.]+$/.test(text)) {
         return false;
+      }
+      
+      // Must not be just special characters or symbols
+      if (/^[^\w\s]+$/.test(text)) {
+        return false;
+      }
+      
+      // Must contain at least one letter or number
+      if (!/[a-zA-Z0-9]/.test(text)) {
+        return false;
+      }
+      
+      // Must not be a single word that looks like a UI element
+      if (text.split(' ').length === 1 && text.length < 10) {
+        // Check if it's a common UI word
+        const uiWords = ['outline', 'icon', 'button', 'menu', 'tooltip', 'badge', 'status', 'online', 'offline', 'typing', 'recording', 'mute', 'pin', 'delete', 'edit', 'reply', 'forward', 'copy', 'share', 'download', 'attach', 'send', 'emoji', 'sticker', 'gif', 'voice', 'video', 'image', 'document', 'location', 'contact', 'poll'];
+        if (uiWords.includes(text.toLowerCase())) {
+          return false;
+        }
       }
       
       return true;
@@ -2989,29 +3176,65 @@
       switch (request.action) {
         case "getChats":
           (async () => {
-            const messages = messageExtractor.getChatMessages();
-            let currentChatInfo = await messageExtractor.getCurrentChatInfo();
-
             console.log('=== GETCHATS ACTION ===');
-            console.log('Messages found:', messages.length);
-            console.log('Current chat info:', currentChatInfo);
-
-            // Ensure we have valid chat info; retry once after a short delay
-            if (!currentChatInfo || !currentChatInfo.title || currentChatInfo.title === 'Unknown Chat') {
-              console.warn('Chat info is invalid, retrying shortly...');
-              await new Promise(r => setTimeout(r, 300));
-              const freshChatInfo = await messageExtractor.getCurrentChatInfo();
-              if (freshChatInfo && freshChatInfo.title && freshChatInfo.title !== 'Unknown Chat') {
-                currentChatInfo = freshChatInfo;
+            
+            // Try to get messages from chat scanner first (which has proper chat assignments)
+            let messages = [];
+            let currentChatInfo = await messageExtractor.getCurrentChatInfo();
+            
+            // Use chat scanner if available to get messages from all chats
+            if (window.whatsappChatScanner && window.whatsappChatScanner.isReady) {
+              console.log('🔍 Using chat scanner to get all chats with messages...');
+              const chatScannerResult = window.whatsappChatScanner.getAllChatsWithLatestMessages();
+              
+              if (chatScannerResult.success && chatScannerResult.chats.length > 0) {
+                console.log(`✅ Chat scanner found ${chatScannerResult.chats.length} chats with messages`);
+                
+                // Convert chat scanner data to message format
+                messages = chatScannerResult.chats.map((chat, index) => ({
+                  id: `msg_${index}_${Date.now()}`,
+                  messageId: `msg_${index}_${Date.now()}`,
+                  text: chat.message || '',
+                  timestamp: chat.timestamp || Date.now(),
+                  ts: chat.timestamp || Date.now(),
+                  chatId: `chat_${chat.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+                  chatTitle: chat.name,
+                  isGroup: false, // Chat scanner doesn't provide group info yet
+                  type: 'text',
+                  source: 'chat_scanner'
+                }));
+                
+                console.log(`📱 Converted ${messages.length} messages from chat scanner`);
+              } else {
+                console.log('⚠️ Chat scanner found no chats, falling back to current chat extraction');
+              }
+            }
+            
+            // Fallback to current chat extraction if chat scanner didn't work
+            if (messages.length === 0) {
+              console.log('📱 Falling back to current chat message extraction...');
+              messages = messageExtractor.getChatMessages();
+              
+              // Ensure we have valid chat info; retry once after a short delay
+              if (!currentChatInfo || !currentChatInfo.title || currentChatInfo.title === 'Unknown Chat') {
+                console.warn('Chat info is invalid, retrying shortly...');
+                await new Promise(r => setTimeout(r, 300));
+                const freshChatInfo = await messageExtractor.getCurrentChatInfo();
+                if (freshChatInfo && freshChatInfo.title && freshChatInfo.title !== 'Unknown Chat') {
+                  currentChatInfo = freshChatInfo;
+                }
               }
             }
 
-                    // Check if we're in a valid chat context
-        const isInChat = messageExtractor.isInActiveChat() && 
-                       currentChatInfo && 
-                       currentChatInfo.title && 
-                       currentChatInfo.title !== 'Unknown Chat' &&
-                       currentChatInfo.title !== 'WhatsApp';
+            console.log('Messages found:', messages.length);
+            console.log('Current chat info:', currentChatInfo);
+
+            // Check if we're in a valid chat context
+            const isInChat = messageExtractor.isInActiveChat() && 
+                           currentChatInfo && 
+                           currentChatInfo.title && 
+                           currentChatInfo.title !== 'Unknown Chat' &&
+                           currentChatInfo.title !== 'WhatsApp';
 
             // If no messages but we have chat info, this might be a new chat or loading state
             if (messages.length === 0) {
@@ -3226,6 +3449,81 @@
                 error: error.message,
                 availableChats: [],
                 totalChats: 0
+              });
+            }
+          })();
+          return true; // keep channel open for response
+
+        case "getAllChatsWithMessages":
+          (async () => {
+            try {
+              console.log('Getting all chats with their latest messages...');
+              
+              // Use the chat scanner if available
+              if (window.whatsappChatScanner && window.whatsappChatScanner.isReady) {
+                console.log('🔍 Using chat scanner to get all chats with messages...');
+                const chatScannerResult = window.whatsappChatScanner.getAllChatsWithLatestMessages();
+                
+                if (chatScannerResult.success && chatScannerResult.chats.length > 0) {
+                  console.log(`✅ Chat scanner found ${chatScannerResult.chats.length} chats with messages`);
+                  
+                  // Format messages as "P1 <name> <message>"
+                  const formattedMessages = chatScannerResult.chats.map((chat, index) => ({
+                    id: `chat_${index}_${Date.now()}`,
+                    chat_id: `chat_${chat.name.replace(/[^a-zA-Z0-9]/g, '_')}`,
+                    chatTitle: chat.name,
+                    chatId: `chat_${chat.name.replace(/[^a-zA-Z0-9]/g, '_')}`,
+                    sender: 'user',
+                    text: `P1 ${chat.name} ${chat.message}`,
+                    ts: chat.timestamp,
+                    isGroup: false,
+                    priority: 'P1',
+                    score: 0.0
+                  }));
+                  
+                  sendResponse({ 
+                    success: true, 
+                    messages: formattedMessages,
+                    totalMessages: formattedMessages.length,
+                    message: `Found ${formattedMessages.length} chats with messages`
+                  });
+                  return;
+                } else {
+                  console.log('⚠️ Chat scanner found no chats, falling back to manual extraction');
+                }
+              } else {
+                console.log('⚠️ Chat scanner not available, using manual extraction');
+              }
+
+              // Fallback to manual extraction
+              const availableChats = messageExtractor.getAvailableChats();
+              const formattedMessages = availableChats.map((chat, index) => ({
+                id: `chat_${index}_${Date.now()}`,
+                chat_id: `chat_${chat.title.replace(/[^a-zA-Z0-9]/g, '_')}`,
+                chatTitle: chat.title,
+                chatId: `chat_${chat.title.replace(/[^a-zA-Z0-9]/g, '_')}`,
+                sender: 'user',
+                text: `P1 ${chat.title} ${chat.message || 'No message'}`,
+                ts: Date.now(),
+                isGroup: false,
+                priority: 'P1',
+                score: 0.0
+              }));
+              
+              sendResponse({ 
+                success: true, 
+                messages: formattedMessages,
+                totalMessages: formattedMessages.length,
+                message: `Found ${formattedMessages.length} chats with messages`
+              });
+              
+            } catch (error) {
+              console.error('Error getting all chats with messages:', error);
+              sendResponse({ 
+                success: false, 
+                error: error.message,
+                messages: [],
+                totalMessages: 0
               });
             }
           })();

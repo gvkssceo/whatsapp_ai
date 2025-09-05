@@ -29,7 +29,7 @@
   "content_scripts": [
     {
       "matches": ["https://web.whatsapp.com/*"],
-      "js": ["content.js"],
+      "js": ["content_chat_scanner.js", "content.js"],
       "run_at": "document_end"
     }
   ],

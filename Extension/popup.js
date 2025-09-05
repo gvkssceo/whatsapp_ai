@@ -1902,40 +1902,24 @@ class WhatsAppAIHelper {
 
       UIManager.showStatus('🚀 Auto-fetching messages from all chats...', 'info');
       
-      // Step 1: Get available chats
-      const chatsResponse = await chrome.tabs.sendMessage(tab.id, { action: "getAvailableChats" });
-      
-      if (!chatsResponse || !chatsResponse.success) {
-        UIManager.showStatus('❌ Failed to get available chats', 'error');
-        return;
-      }
-
-      const availableChats = chatsResponse.availableChats;
-      console.log(`Found ${availableChats.length} available chats:`, availableChats);
-      
-      if (availableChats.length === 0) {
-        UIManager.showStatus('ℹ️ No chats found. Please ensure WhatsApp Web is loaded with chat list visible.', 'info');
-        return;
-      }
-
-      UIManager.showStatus(`📱 Found ${availableChats.length} chats. Starting bulk message extraction...`, 'info');
-      
-      // Step 2: Fetch messages from all chats
+      // Use the new getAllChatsWithMessages action that uses the chat scanner
       const allMessagesResponse = await chrome.tabs.sendMessage(tab.id, { 
-        action: "fetchAllChatsBulk",
-        chats: availableChats
+        action: "getAllChatsWithMessages"
       });
       
       if (allMessagesResponse && allMessagesResponse.success) {
         const totalMessages = allMessagesResponse.totalMessages || 0;
-        const processedChats = allMessagesResponse.processedChats || 0;
+        const messages = allMessagesResponse.messages || [];
         
-        UIManager.showStatus(`✅ Successfully extracted ${totalMessages} messages from ${processedChats} chats!`, 'success');
+        UIManager.showStatus(`✅ Successfully extracted ${totalMessages} messages from all chats!`, 'success');
         
-        // Step 3: Get and display all extracted messages
-        setTimeout(async () => {
-          await this.displayAllExtractedMessages();
-        }, 1000);
+        // Display the messages directly
+        if (messages.length > 0) {
+          this.displayExtractedMessages(messages);
+          UIManager.showStatus(`📱 Displaying ${messages.length} messages from all chats!`, 'success');
+        } else {
+          UIManager.showStatus('ℹ️ No messages were extracted from the chats.', 'info');
+        }
         
       } else {
         UIManager.showStatus('❌ Failed to fetch messages: ' + (allMessagesResponse?.error || 'Unknown error'), 'error');
