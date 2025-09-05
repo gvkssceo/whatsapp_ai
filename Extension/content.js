@@ -509,19 +509,27 @@
         
         // Enhanced chat title detection with 2025 WhatsApp Web selectors
         const chatTitleSelectors = [
-          // Most current WhatsApp Web selectors (2025)
+          // Most current WhatsApp Web selectors (2025) - prioritize title attributes
           'header[data-testid="conversation-header"] span[title]:not([title=""])',
           'div[data-testid="conversation-header"] span[title]:not([title=""])', 
           'header span[data-testid="conversation-title"]',
           'div span[data-testid="conversation-title"]',
           
-          // Title attribute selectors
+          // Title attribute selectors with better filtering
           'header[data-testid="conversation-header"] *[title]:not([title=""])',
           'div[data-testid="conversation-header"] *[title]:not([title=""])',
           
-          // Text content selectors
-          'header[data-testid="conversation-header"] span[dir="auto"]',
-          'div[data-testid="conversation-header"] span[dir="auto"]',
+          // Look for spans with specific WhatsApp classes that contain chat names
+          'header[data-testid="conversation-header"] span[class*="x1iyjqo2"][title]',
+          'header[data-testid="conversation-header"] span[class*="x6ikm8r"][title]',
+          'header[data-testid="conversation-header"] span[class*="x10l6tqk"][title]',
+          'div[data-testid="conversation-header"] span[class*="x1iyjqo2"][title]',
+          'div[data-testid="conversation-header"] span[class*="x6ikm8r"][title]',
+          'div[data-testid="conversation-header"] span[class*="x10l6tqk"][title]',
+          
+          // Text content selectors - be more careful
+          'header[data-testid="conversation-header"] span[dir="auto"]:not([title*=":"])', // Avoid timestamps
+          'div[data-testid="conversation-header"] span[dir="auto"]:not([title*=":"])', // Avoid timestamps
           'header[data-testid="conversation-header"] h1',
           'div[data-testid="conversation-header"] h1',
           
@@ -571,7 +579,18 @@
               if (cleanedTitle === 'WhatsApp' || 
                   excludeWords.some(word => cleanedTitle.toLowerCase().includes(word.toLowerCase())) ||
                   cleanedTitle.length < 2 ||
-                  /^[a-z-]+$/.test(cleanedTitle)) { // Skip if it's all lowercase with hyphens (likely UI)
+                  /^[a-z-]+$/.test(cleanedTitle) || // Skip if it's all lowercase with hyphens (likely UI)
+                  cleanedTitle.match(/^\d+$/) || // Skip if it's just numbers
+                  cleanedTitle.match(/^\d{1,2}:\d{2}/) || // Skip if it's a timestamp
+                  cleanedTitle.match(/^(online|last seen|typing|away|yesterday|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i) || // Skip status text
+                  cleanedTitle.includes('default-') || // Skip UI artifacts
+                  cleanedTitle.includes('refreshed') || // Skip UI artifacts
+                  cleanedTitle.includes('status-') || // Skip UI artifacts
+                  cleanedTitle.includes('image-') || // Skip UI artifacts
+                  cleanedTitle.includes('voice-') || // Skip UI artifacts
+                  cleanedTitle.includes('pin-') || // Skip UI artifacts
+                  cleanedTitle.includes('disappearing-') || // Skip UI artifacts
+                  cleanedTitle.includes('call-')) { // Skip UI artifacts
                 continue;
               }
               
